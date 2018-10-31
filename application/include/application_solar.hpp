@@ -4,6 +4,7 @@
 #include "application.hpp"
 #include "model.hpp"
 #include "structs.hpp"
+#include "Node.hpp"
 
 // gpu representation of model
 class ApplicationSolar : public Application {
@@ -22,10 +23,13 @@ class ApplicationSolar : public Application {
 
   // draw all objects
   void render() const;
+  void renderSceneGraph(Node*) const;
 
  protected:
   void initializeShaderPrograms();
   void initializeGeometry();
+  void initializeSceneGraph();
+ 
   // update uniform values
   void uploadUniforms();
   // upload projection matrix
