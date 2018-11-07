@@ -234,7 +234,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	planettranslation->setParent(planetaroundsunrotation);
 	glm::fmat4 planettranslationmatrix = glm::translate(glm::fmat4{}, glm::fvec3{ 0.0f, 0.0f, -2.0f });
 	planettranslation->setLocalTransform(planettranslationmatrix);
-
+	//Orbit: basically a circle scaled up to the distance between sun and planet
 	GeometryNode* planetOrbit = new GeometryNode("Mercury Orbit");
 	planetOrbit->setOrbit(true);
 	planetOrbit->setParent(root);
@@ -334,7 +334,12 @@ void ApplicationSolar::initializeSceneGraph() {
 	moontranslation->setRotationY(0.2f);
 	glm::fmat4 moontranslationmatrix = glm::translate(glm::fmat4{}, glm::fvec3{ 0.0f, 0.0f, -1.5f });
 	moontranslation->setLocalTransform(moontranslationmatrix);
-
+	
+	planetOrbit = new GeometryNode("Moon Orbit");
+	planetOrbit->setOrbit(true);
+	planetOrbit->setParent(planet);
+	root->addChildren(planetOrbit);
+	planetOrbit->setLocalTransform(glm::scale(glm::fmat4{}, glm::fvec3{ -1.5f, -1.5f, -1.5f }));
 
 
 	moon->setModel(planet_model);
