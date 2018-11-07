@@ -6,7 +6,14 @@ class GeometryNode : public Node
 {
 private:
 	model geometry;
+	bool isStar = false;
+	bool isOrbit = false;
 public:
+
+	bool useStar();
+	bool useOrbit();
+	void setStar(bool);
+	void setOrbit(bool);
 	GeometryNode();
 	GeometryNode(std::string);
 	~GeometryNode();

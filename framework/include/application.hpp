@@ -13,7 +13,7 @@ class Application {
  public:
   template<typename T>
   static void run(int argc, char* argv[], unsigned ver_major, unsigned ver_minor);
-
+  
   // allocate and initialize objects
   Application(std::string const& resource_path);
   // free shader resources

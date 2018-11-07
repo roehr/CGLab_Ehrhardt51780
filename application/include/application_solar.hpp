@@ -29,17 +29,19 @@ class ApplicationSolar : public Application {
   void initializeShaderPrograms();
   void initializeGeometry();
   void initializeSceneGraph();
- 
   // update uniform values
   void uploadUniforms();
   // upload projection matrix
   void uploadProjection();
   // upload view matrix
   void uploadView();
-
+  
   // cpu representation of model
   model_object planet_object;
-  
+  model_object star_object;
+  model_object orbit_object;
+  bool isStar;
+  bool isOrbit;
   // camera transform matrix
   glm::fmat4 m_view_transform;
   // camera projection matrix
