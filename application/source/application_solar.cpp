@@ -74,16 +74,18 @@ void ApplicationSolar::renderSceneGraph(Node* currNode) const {
 		 }
 		 else{
 			if(geoNode->useOrbit()){
+				//all these ifs are really ugly as stated in the comment in the GeometryNode.hpp
 				glUseProgram(m_shaders.at("vao").handle);
+				//I've adjusted the vertexshader here so it gets the same values as the simple shader does
+				//Surely I could also pass the Modelview here, but I think it is better to keep everything even since this surely is not the last shader we add
+			
 				glUniformMatrix4fv(m_shaders.at("vao").u_locs.at("ModelMatrix"),
 					1, GL_FALSE, glm::value_ptr(model_matrix));
 
 
 				//bind orbitVAO
 				glBindVertexArray(orbit_object.vertex_AO);
-
-		
-				glDrawArrays(orbit_object.draw_mode, 0, 360.f);
+				glDrawArrays(orbit_object.draw_mode, 0, orbitresolution);
 			}
 			else {
 				glUseProgram(m_shaders.at("planet").handle);
@@ -127,7 +129,8 @@ void ApplicationSolar::render() const {
 }
 
 void ApplicationSolar::uploadView() {
-	// bind shader to which to upload unforms
+	//this needs cleanup before it ends up with tons of shaders that need the same "treatment"
+	//bind shader to which to upload unforms
 	glUseProgram(m_shaders.at("planet").handle);
   // vertices are transformed in camera space, so camera transform must be inverted
   glm::fmat4 view_matrix = glm::inverse(SceneGraph::getInstance().getActiveCamera()->getWorldTransform());
@@ -144,7 +147,7 @@ void ApplicationSolar::uploadView() {
 }
 
 void ApplicationSolar::uploadProjection() {
-
+	//this needs cleanup before it ends up with tons of shaders that need the same "treatment"
 	// bind shader to which to upload unforms
 	glUseProgram(m_shaders.at("planet").handle);
   // upload matrix to gpu
@@ -334,6 +337,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	moontranslation->setRotationY(0.2f);
 	glm::fmat4 moontranslationmatrix = glm::translate(glm::fmat4{}, glm::fvec3{ 0.0f, 0.0f, -1.5f });
 	moontranslation->setLocalTransform(moontranslationmatrix);
+	
 	
 	planetOrbit = new GeometryNode("Moon Orbit");
 	planetOrbit->setOrbit(true);
@@ -621,7 +625,7 @@ void ApplicationSolar::initializeGeometry() {
   std::vector<float>  orbit_model;
   float angle = 0.0; 
   //resolution defines in how many segments the circle will be divided
-  float  orbitresolution = 360.0f;
+
   while (angle < 2.0f * 3.14f) {
 	  //use sin and cos to define xyz values
 	  orbit_model.push_back(std::cos(angle));

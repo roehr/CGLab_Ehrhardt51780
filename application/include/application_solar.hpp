@@ -46,6 +46,7 @@ class ApplicationSolar : public Application {
   glm::fmat4 m_view_transform;
   // camera projection matrix
   glm::fmat4 m_view_projection;
+  float  orbitresolution = 360.0f; //defines how many segments the circle which represents the orbits will get
 };
 
 #endif
