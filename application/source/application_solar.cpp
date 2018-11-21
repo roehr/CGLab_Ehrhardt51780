@@ -55,6 +55,8 @@ void ApplicationSolar::renderSceneGraph(Node* currNode) const {
 	
 	
 	if (currNode->getType() == "PointLight") {
+
+		//Handle lightvalues
 		PointLightNode* lightNode = static_cast<PointLightNode*>(currNode);
 		//pass light Information to Shaders
 		glUseProgram(m_shaders.at("planet").handle);
@@ -724,7 +726,7 @@ void ApplicationSolar::keyCallback(int key, int action, int mods) {
 	  SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::rotate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(), 0.01f, glm::fvec3{ 0.0f, 0.0f, -1.0f }));
 	  uploadView();
   }
-
+  //Handle Toon Shading
   else if (key == GLFW_KEY_0) {
 	  glUseProgram(m_shaders.at("planet").handle);
 	  glUniform1i(m_shaders.at("planet").u_locs.at("Toon"), 0);

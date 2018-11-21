@@ -16,6 +16,7 @@ out vec3 vPos;
 
 void main(void)
 {
+    //positions for fragmentshader
 	gl_Position = (ProjectionMatrix  * ViewMatrix * ModelMatrix) * vec4(in_Position, 1.0);
 	pass_Normal = (NormalMatrix * vec4(in_Normal, 0.0)).xyz;
 	position= vec3(ModelMatrix * vec4(in_Position, 1.0));
