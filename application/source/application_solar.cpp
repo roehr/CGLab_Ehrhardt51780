@@ -3,6 +3,7 @@
 
 #include "utils.hpp"
 #include "GeometryNode.hpp"
+#include "PointLightNode.hpp"
 #include "shader_loader.hpp"
 #include "model_loader.hpp"
 #include "SceneGraph.hpp"
@@ -27,9 +28,8 @@ ApplicationSolar::ApplicationSolar(std::string const& resource_path)
  ,m_view_transform{glm::translate(glm::fmat4{}, glm::fvec3{0.0f, 0.0f, 4.0f})}
  ,m_view_projection{utils::calculate_projection_matrix(initial_aspect_ratio)}
 { initializeGeometry();
-
-initializeShaderPrograms();
 initializeSceneGraph();
+initializeShaderPrograms();
   
 }
 
@@ -52,9 +52,23 @@ void ApplicationSolar::renderSceneGraph(Node* currNode) const {
 		//root: just use LocalTransform
 		currNode->setWorldTransform(currNode->getLocalTransform());
 	}
+	
+	
+	if (currNode->getType() == "PointLight") {
+		PointLightNode* lightNode = static_cast<PointLightNode*>(currNode);
+		//pass light Information to Shaders
+		glUseProgram(m_shaders.at("planet").handle);
+		//position
+		glUniform3f(m_shaders.at("planet").u_locs.at("LightPosition"), lightNode->getLightPosition().x, lightNode->getLightPosition().y, lightNode->getLightPosition().z);
+		//color
+		glUniform3f(m_shaders.at("planet").u_locs.at("LightColor"), lightNode->getLightColor().x, lightNode->getLightColor().y, lightNode->getLightColor().z);
+		
+		//intensity
+		glUniform1f(m_shaders.at("planet").u_locs.at("LightIntensity"), lightNode->getLightIntensity());
+
+	}
 	//if geometry was found, render it
 	if (currNode->getType()=="Geometry") {
-
 
 		 model_matrix = currNode->getWorldTransform();
 		 GeometryNode* geoNode = static_cast<GeometryNode*>(currNode);
@@ -91,7 +105,8 @@ void ApplicationSolar::renderSceneGraph(Node* currNode) const {
 				glUseProgram(m_shaders.at("planet").handle);
 				glUniformMatrix4fv(m_shaders.at("planet").u_locs.at("ModelMatrix"),
 					1, GL_FALSE, glm::value_ptr(model_matrix));
-
+				//color of the Planet
+				glUniform3f(m_shaders.at("planet").u_locs.at("PlanetColor"),geoNode->getColor().x, geoNode->getColor().y, geoNode->getColor().z);
 				// extra matrix for normal transformation to keep them orthogonal to surface
 				glm::fmat4 normal_matrix = glm::inverseTranspose(glm::inverse(SceneGraph::getInstance().getActiveCamera()->getWorldTransform()) * model_matrix);
 				glUniformMatrix4fv(m_shaders.at("planet").u_locs.at("NormalMatrix"),
@@ -123,7 +138,6 @@ void ApplicationSolar::renderSceneGraph(Node* currNode) const {
 void ApplicationSolar::render() const {
   
   if (SceneGraph::getInstance().getRoot() != nullptr) {
-	  	  //start traversing the Scenegraph
 	  renderSceneGraph(SceneGraph::getInstance().getRoot());
 }
 }
@@ -182,6 +196,14 @@ void ApplicationSolar::initializeShaderPrograms() {
   m_shaders.at("planet").u_locs["ModelMatrix"] = -1;
   m_shaders.at("planet").u_locs["ViewMatrix"] = -1;
   m_shaders.at("planet").u_locs["ProjectionMatrix"] = -1;
+  //ambient color of planets
+  m_shaders.at("planet").u_locs["PlanetColor"] = -1;
+  m_shaders.at("planet").u_locs["LightPosition"] = -1;
+  m_shaders.at("planet").u_locs["LightColor"] = -1;
+  m_shaders.at("planet").u_locs["LightIntensity"] = -1;
+  m_shaders.at("planet").u_locs["Toon"] = -1;
+
+
 
   //next Shader
   m_shaders.emplace("vao", shader_program{ {{GL_VERTEX_SHADER,m_resource_path + "shaders/vao.vert"},
@@ -190,6 +212,8 @@ void ApplicationSolar::initializeShaderPrograms() {
   m_shaders.at("vao").u_locs["ModelMatrix"] = -1;
   m_shaders.at("vao").u_locs["ViewMatrix"] = -1;
   m_shaders.at("vao").u_locs["ProjectionMatrix"] = -1;
+
+
 }
 
 
@@ -207,8 +231,19 @@ void ApplicationSolar::initializeSceneGraph() {
 	//this is intentional because it allows to easily track an object by just putting the camera update within the render procedure
 	//as long as the camera is a child of root, it will work like in the example which was provided 
 	Node* root = SceneGraph::getInstance().getRoot();
-	GeometryNode* sun = new GeometryNode("Sun");
+	//add the lightsource to our scene
+	PointLightNode * light= new PointLightNode("Sunlight");
+	
+	light->setLightIntensity(0.7f);
+	light->setLightColor(glm::fvec3{ 1.0f, 1.0f, 1.0f });
+	light->setParent(root);
+	light->setLightPosition(glm::fvec3{ 0.0f,0.0f,0.0f });
+	root->addChildren(light);
+	light->setLocalTransform(glm::translate(glm::fmat4{},light->getLightPosition()));
 
+
+	GeometryNode* sun = new GeometryNode("Sun");
+	sun->setColor(glm::fvec3{1.0f,1.0f,0.0f});
 	sun->setLocalTransform(glm::fmat4{});
 	sun->setModel(planet_model);
 	sun->changeTimeDependency();
@@ -233,6 +268,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	Node* planettranslation = new Node("Mercury Translate");
 	//GeometryNode: This is the planet as it will be rendered - it also holds the values for rotation around itself
 	GeometryNode* planet = new GeometryNode("Mercury Rotation");
+	
 	planetaroundsunrotation->addChildren(planettranslation);
 	planettranslation->setParent(planetaroundsunrotation);
 	glm::fmat4 planettranslationmatrix = glm::translate(glm::fmat4{}, glm::fvec3{ 0.0f, 0.0f, -2.0f });
@@ -252,6 +288,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	planet->changeTimeDependency();
 	planettranslation->addChildren(planet);
 	planet->setParent(planettranslation);
+	planet->setColor(glm::fvec3{ 0.5f,0.0f,0.0f });
 
 
 	//Venus
@@ -289,7 +326,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	planet->changeTimeDependency();
 	planettranslation->addChildren(planet);
 	planet->setParent(planettranslation);
-
+	planet->setColor(glm::fvec3{ 0.0f,0.5f,0.0f });
 	//Earth
 	planetaroundsunrotation = new Node("Earth Sunrotation");
 
@@ -326,7 +363,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	planet->changeTimeDependency();
 	planettranslation->addChildren(planet);
 	planet->setParent(planettranslation);
-
+	planet->setColor(glm::fvec3{ 0.0f,0.0f,0.5f });
 	//moon
 	//basically transformations work as with a planet, just that in this case the earth will be our center of rotation
 	Node* moontranslation = new Node("Moon Translate");
@@ -354,7 +391,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	moon->changeTimeDependency();
 	moontranslation->addChildren(moon);
 	moon->setParent(moontranslation);
-
+	moon->setColor(glm::fvec3{ 0.5f,0.5f,0.5f });
 
 
 	//Mars
@@ -391,7 +428,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	planet->changeTimeDependency();
 	planettranslation->addChildren(planet);
 	planet->setParent(planettranslation);
-
+	planet->setColor(glm::fvec3{ 0.5f,0.25f,0.25f });
 
 	//Jupiter
 	planetaroundsunrotation = new Node("Jupiter Sunrotation");
@@ -459,7 +496,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	planet->changeTimeDependency();
 	planettranslation->addChildren(planet);
 	planet->setParent(planettranslation);
-
+	planet->setColor(glm::fvec3{ 0.25f,0.25f,0.5f });
 	//Uranus
 	planetaroundsunrotation = new Node("Uranus Sunrotation");
 
@@ -494,7 +531,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	planettranslation->addChildren(planet);
 	planet->setParent(planettranslation);
 
-
+	planet->setColor(glm::fvec3{ 0.0f,0.2f,0.5f });
 	//Neptune
 
 	planetaroundsunrotation = new Node("Neptune Sunrotation");
@@ -526,6 +563,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	planet->changeTimeDependency();
 	planettranslation->addChildren(planet);
 	planet->setParent(planettranslation);
+	planet->setColor(glm::fvec3{ 0.5f,0.3f,0.5f });
 	
 	CameraNode* cam = new CameraNode("Camera");
 	cam->setParent(root);
@@ -685,6 +723,15 @@ void ApplicationSolar::keyCallback(int key, int action, int mods) {
   else if (key == GLFW_KEY_Z && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
 	  SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::rotate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(), 0.01f, glm::fvec3{ 0.0f, 0.0f, -1.0f }));
 	  uploadView();
+  }
+
+  else if (key == GLFW_KEY_0) {
+	  glUseProgram(m_shaders.at("planet").handle);
+	  glUniform1i(m_shaders.at("planet").u_locs.at("Toon"), 0);
+  }
+  else if (key == GLFW_KEY_1) {
+	  glUseProgram(m_shaders.at("planet").handle);
+	  glUniform1i(m_shaders.at("planet").u_locs.at("Toon"), 1);
   }
 }
 

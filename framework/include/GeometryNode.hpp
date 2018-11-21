@@ -5,6 +5,7 @@
 class GeometryNode : public Node
 {
 private:
+	glm::fvec3 color;
 	model geometry;
 	bool isStar = false;
 	bool isOrbit = false;
@@ -20,6 +21,8 @@ public:
 	//That way other types of Objects should be addable easily and the Application can be cleaned up a bit
 	bool useStar();
 	bool useOrbit();
+	glm::fvec3 getColor();
+	void setColor(glm::fvec3);
 	void setStar(bool);
 	void setOrbit(bool);
 	GeometryNode();

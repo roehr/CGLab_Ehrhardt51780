@@ -36,6 +36,14 @@ bool GeometryNode::useStar() {
 bool GeometryNode::useOrbit() {
 	return isOrbit;
 }
+glm::fvec3 GeometryNode::getColor()
+{
+	return color;
+}
+void GeometryNode::setColor(glm::fvec3 col)
+{
+	color = col;
+}
 std::string GeometryNode::getType() {
 	return "Geometry";
 }

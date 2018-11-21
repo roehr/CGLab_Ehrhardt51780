@@ -129,7 +129,10 @@ void set_callback_object(GLFWwindow* window, Application* app) {
   auto mouse_func = [](GLFWwindow* w, double a, double b) {
         static_cast<Application*>(glfwGetWindowUserPointer(w))->mouse_callback(w, a, b);
   };
+  //TEST
+  glfwSetCursorPos(window, 0.0, 0.0);
   glfwSetCursorPosCallback(window, mouse_func);
+
   // allow free mouse movement
   // register resizing function
   auto resize_func = [](GLFWwindow* w, int a, int b) {
