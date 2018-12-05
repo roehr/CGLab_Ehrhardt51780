@@ -94,7 +94,7 @@ void ApplicationSolar::renderSceneGraph(Node* currNode) const {
 		 }
 		 else {
 			 if (geoNode->useSkybox()) {
-
+				 //Shader:
 				 glUseProgram(m_shaders.at("skybox").handle);
 
 				 glUniformMatrix4fv(m_shaders.at("skybox").u_locs.at("ModelMatrix"),
@@ -106,7 +106,7 @@ void ApplicationSolar::renderSceneGraph(Node* currNode) const {
 
 
 				 glActiveTexture(GL_TEXTURE0);
-				 //glBindTexture(GL_TEXTURE_2D, geoNode->getDiffTex());
+				 //bind as Cubemap
 				 glBindTexture(GL_TEXTURE_CUBE_MAP, geoNode->getDiffTex());
 				 glUniform1i(glGetUniformLocation(m_shaders.at("skybox").handle, "CubeMap"), 0);
 				 // draw bound vertex array using bound shader
@@ -131,6 +131,8 @@ void ApplicationSolar::renderSceneGraph(Node* currNode) const {
 					 glUseProgram(m_shaders.at("planet").handle);
 					 glUniformMatrix4fv(m_shaders.at("planet").u_locs.at("ModelMatrix"),
 						 1, GL_FALSE, glm::value_ptr(model_matrix));
+					 //handle sun seperately in shader
+					 
 					 if (geoNode->useSun()) {
 						 glUniform1i(m_shaders.at("planet").u_locs.at("Sun"), 1);
 					 }
@@ -289,6 +291,7 @@ void ApplicationSolar::initializeShaderPrograms() {
 }
 
 void ApplicationSolar::initializeSkyboxTextures(GeometryNode* skybox) {
+	//define the textures
 	std::vector<std::string> textures
 	{
 		m_resource_path + "textures/galaxy+X.png",
@@ -306,12 +309,14 @@ void ApplicationSolar::initializeSkyboxTextures(GeometryNode* skybox) {
 	 //glBindTexture(GL_TEXTURE_2D, skybox->getDiffTex());
 	 //pixel_data colortex = texture_loader::file(textures[0]);
 	// glTexImage2D(GL_TEXTURE_2D, 0, (GLint)colortex.channels, colortex.width, colortex.height, 0, colortex.channels, colortex.channel_type, colortex.ptr());
+	//assign the textures
 	for (unsigned int i = 0; i < textures.size(); i++)
 	{
 		pixel_data colortex = texture_loader::file(textures[i]);
 		glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, (GLint)colortex.channels, colortex.width, colortex.height, 0, colortex.channels, colortex.channel_type, colortex.ptr());
 	
 	}
+	//setup parameters
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, (GLint)GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, (GLint)GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -963,7 +968,7 @@ void ApplicationSolar::initializeGeometry() {
   glBufferData(GL_ARRAY_BUFFER, sizeof(float)*skybox_model.size(), &(skybox_model[0]), GL_STATIC_DRAW);
   //now layout - only the position is passed:
   glEnableVertexAttribArray(0);
-  //location 0 for our shader - position :
+  //location 0 for our shader - position:
   glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, (GLvoid*)(0));
   //Bind
   glBindBuffer(GL_ARRAY_BUFFER, 0);

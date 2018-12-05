@@ -23,15 +23,20 @@ uniform sampler2D DispMap;
 
 
 vec3 perturbNormal( vec3 vertex_pos, vec3 surf_norm,vec2 uv) {
-// 	derivatives -> get slopes
+//derives tell us the slopes. basically edge vectors for our tangents
 vec3 q0 = dFdx( vertex_pos.xyz );
 vec3 q1 = dFdy( vertex_pos.xyz );
 vec2 st0 = dFdx(uv.st );
 vec2 st1 = dFdy(uv.st );
-//basically computing tangent and bitangent
-vec3 S = normalize( q0 * st1.t - q1 * st0.t );
-vec3 T = normalize( -q0 * st1.s + q1 * st0.s );
-vec3 N = normalize( surf_norm );
+
+//solving the equation
+ vec3 S = normalize( q0 * st1.t - q1 * st0.t);
+ vec3 N = normalize( surf_norm );
+ vec3 T = cross(N, S);
+ //vec3 S = normalize( q0 * st1.t - q1 * st0.t );
+//vec3 T = normalize( -q0 * st1.s + q1 * st0.s );
+ //  S= cross(N, T);
+//vec3 N = normalize( surf_norm );
 //"normalize" the space of the coordinates 
 vec3 mapN = texture2D(NormMap,uv).xyz * 2.0 - 1.0;
 
