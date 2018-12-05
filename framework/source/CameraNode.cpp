@@ -40,3 +40,13 @@ CameraNode::CameraNode(std::string _name)
 CameraNode::~CameraNode()
 {
 }
+
+glm::fvec3 CameraNode::getCamPosition()
+{
+	return camPosition;
+}
+
+void CameraNode::setCamPosition(glm::fvec3 pos)
+{
+	camPosition = pos;
+}

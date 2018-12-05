@@ -9,6 +9,8 @@ private:
 	bool isPerspective;
 	bool isEnabled;
 	glm::fmat4  projectionMatrix;
+	glm::fvec3 camPosition;
+	glm::fmat4 projectionWithoutTranslation;
 public:
 	bool getPerspective();
 	bool getEnabled();
@@ -16,7 +18,8 @@ public:
 	glm::fmat4 getProjectionMatrix();
 	void setProjectionMatrix(glm::fmat4);
 	std::string getType() {return "Camera"; }
-
+	void setCamPosition(glm::fvec3);
+	glm::fvec3 getCamPosition();
 	CameraNode();
 	CameraNode(std::string);
 	~CameraNode();

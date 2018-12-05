@@ -5,6 +5,7 @@
 #include "model.hpp"
 #include "structs.hpp"
 #include "Node.hpp"
+#include "GeometryNode.hpp"
 
 // gpu representation of model
 class ApplicationSolar : public Application {
@@ -29,6 +30,8 @@ class ApplicationSolar : public Application {
   void initializeShaderPrograms();
   void initializeGeometry();
   void initializeSceneGraph();
+  void initializePlanetTextures(GeometryNode*, std::string, std::string, std::string, std::string);
+  void initializeSkyboxTextures(GeometryNode*);
   // update uniform values
   void uploadUniforms();
   // upload projection matrix
@@ -40,6 +43,7 @@ class ApplicationSolar : public Application {
   model_object planet_object;
   model_object star_object;
   model_object orbit_object;
+  model_object skybox_object;
   bool isStar;
   bool isOrbit;
   // camera transform matrix
