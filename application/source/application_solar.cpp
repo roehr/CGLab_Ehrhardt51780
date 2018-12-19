@@ -22,28 +22,30 @@ using namespace gl;
 #include <iostream>
 
 ApplicationSolar::ApplicationSolar(std::string const& resource_path)
- :Application{resource_path}
- ,planet_object{}
+	:Application{ resource_path }
+	, planet_object{}
 	, star_object{}
 	, orbit_object{}
 	, skybox_object{}
- ,m_view_transform{ glm::fmat4{}}
- ,m_view_projection{utils::calculate_projection_matrix(initial_aspect_ratio)}
+	, screenquad_object{}
+	, m_view_transform{ glm::fmat4{} }
+	, m_view_projection{ utils::calculate_projection_matrix(initial_aspect_ratio) }
 { initializeGeometry();
+initializefbo();
 
 initializeSceneGraph();
 initializeShaderPrograms();
-  
+
 }
 
 ApplicationSolar::~ApplicationSolar() {
-  glDeleteBuffers(1, &planet_object.vertex_BO);
-  glDeleteBuffers(1, &planet_object.element_BO);
-  glDeleteVertexArrays(1, &planet_object.vertex_AO);
+	glDeleteBuffers(1, &planet_object.vertex_BO);
+	glDeleteBuffers(1, &planet_object.element_BO);
+	glDeleteVertexArrays(1, &planet_object.vertex_AO);
 }
 
 void ApplicationSolar::renderSceneGraph(Node* currNode) const {
-	
+
 	glm::fmat4 model_matrix = glm::fmat4{};
 	//set a rotation value 
 	//if the object is supposed to rotate by time, the function will update the matrix
@@ -56,8 +58,8 @@ void ApplicationSolar::renderSceneGraph(Node* currNode) const {
 		//root: just use LocalTransform
 		currNode->setWorldTransform(currNode->getLocalTransform());
 	}
-	
-	
+
+
 	if (currNode->getType() == "PointLight") {
 
 		//Handle lightvalues
@@ -68,153 +70,178 @@ void ApplicationSolar::renderSceneGraph(Node* currNode) const {
 		glUniform3f(m_shaders.at("planet").u_locs.at("LightPosition"), lightNode->getLightPosition().x, lightNode->getLightPosition().y, lightNode->getLightPosition().z);
 		//color
 		glUniform3f(m_shaders.at("planet").u_locs.at("LightColor"), lightNode->getLightColor().x, lightNode->getLightColor().y, lightNode->getLightColor().z);
-		
+
 		//intensity
 		glUniform1f(m_shaders.at("planet").u_locs.at("LightIntensity"), lightNode->getLightIntensity());
 
 	}
 	//if geometry was found, render it
-	if (currNode->getType()=="Geometry") {
+	if (currNode->getType() == "Geometry") {
 
-		 model_matrix = currNode->getWorldTransform();
-		 GeometryNode* geoNode = static_cast<GeometryNode*>(currNode);
-		 if(geoNode->useStar()){
-			 glUseProgram(m_shaders.at("vao").handle);
-			 glUniformMatrix4fv(m_shaders.at("vao").u_locs.at("ModelMatrix"),
-				 1, GL_FALSE, glm::value_ptr(model_matrix));
-
-
-			 //bind starVAO
-			 glBindVertexArray(star_object.vertex_AO);
-
-			 // draw bound vertex array using bound shader
-			 glDrawArrays(GL_POINTS, 0, star_object.num_elements);
-		
-
-		 }
-		 else {
-			 if (geoNode->useSkybox()) {
-				 //Shader:
-				 glUseProgram(m_shaders.at("skybox").handle);
-
-				 glUniformMatrix4fv(m_shaders.at("skybox").u_locs.at("ModelMatrix"),
-					 1, GL_FALSE, glm::value_ptr(model_matrix));
+		model_matrix = currNode->getWorldTransform();
+		GeometryNode* geoNode = static_cast<GeometryNode*>(currNode);
+		if (geoNode->useStar()) {
+			glUseProgram(m_shaders.at("vao").handle);
+			glUniformMatrix4fv(m_shaders.at("vao").u_locs.at("ModelMatrix"),
+				1, GL_FALSE, glm::value_ptr(model_matrix));
 
 
-				 // bind the VAO to draw
-				 glBindVertexArray(skybox_object.vertex_AO);
+			//bind starVAO
+			glBindVertexArray(star_object.vertex_AO);
+
+			// draw bound vertex array using bound shader
+			glDrawArrays(GL_POINTS, 0, star_object.num_elements);
 
 
-				 glActiveTexture(GL_TEXTURE0);
-				 //bind as Cubemap
-				 glBindTexture(GL_TEXTURE_CUBE_MAP, geoNode->getDiffTex());
-				 glUniform1i(glGetUniformLocation(m_shaders.at("skybox").handle, "CubeMap"), 0);
-				 // draw bound vertex array using bound shader
-				 glDrawArrays(skybox_object.draw_mode, 0, skybox_object.num_elements);
-			 }
-			 else {
-				 if (geoNode->useOrbit()) {
-					 //all these ifs are really ugly as stated in the comment in the GeometryNode.hpp
-					 glUseProgram(m_shaders.at("vao").handle);
-					 //I've adjusted the vertexshader here so it gets the same values as the simple shader does
-					 //Surely I could also pass the Modelview here, but I think it is better to keep everything even since this surely is not the last shader we add
+		}
+		else {
+			if (geoNode->useSkybox()) {
+				//Shader:
+				glUseProgram(m_shaders.at("skybox").handle);
 
-					 glUniformMatrix4fv(m_shaders.at("vao").u_locs.at("ModelMatrix"),
-						 1, GL_FALSE, glm::value_ptr(model_matrix));
+				glUniformMatrix4fv(m_shaders.at("skybox").u_locs.at("ModelMatrix"),
+					1, GL_FALSE, glm::value_ptr(model_matrix));
 
 
-					 //bind orbitVAO
-					 glBindVertexArray(orbit_object.vertex_AO);
-					 glDrawArrays(orbit_object.draw_mode, 0, orbitresolution);
-				 }
-				 else {
-					 glUseProgram(m_shaders.at("planet").handle);
-					 glUniformMatrix4fv(m_shaders.at("planet").u_locs.at("ModelMatrix"),
-						 1, GL_FALSE, glm::value_ptr(model_matrix));
-					 //handle sun seperately in shader
-					 
-					 if (geoNode->useSun()) {
-						 glUniform1i(m_shaders.at("planet").u_locs.at("Sun"), 1);
-					 }
-					 else {
-						 glUniform1i(m_shaders.at("planet").u_locs.at("Sun"), 0);
-					 }
-					 //color of the Planet
-					 glUniform3f(m_shaders.at("planet").u_locs.at("PlanetColor"), geoNode->getColor().x, geoNode->getColor().y, geoNode->getColor().z);
-					 // extra matrix for normal transformation to keep them orthogonal to surface
-					 glm::fmat4 normal_matrix = glm::inverseTranspose(glm::inverse(SceneGraph::getInstance().getActiveCamera()->getWorldTransform()) * model_matrix);
-					 glUniformMatrix4fv(m_shaders.at("planet").u_locs.at("NormalMatrix"),
-						 1, GL_FALSE, glm::value_ptr(normal_matrix));
+				// bind the VAO to draw
+				glBindVertexArray(skybox_object.vertex_AO);
 
 
-					 //pass the maps
-					 glActiveTexture(GL_TEXTURE0);
-					 glBindTexture(GL_TEXTURE_2D, geoNode->getDiffTex());
-					 glUniform1i(glGetUniformLocation(m_shaders.at("planet").handle, "DiffMap"), 0);
+				glActiveTexture(GL_TEXTURE0);
+				//bind as Cubemap
+				glBindTexture(GL_TEXTURE_CUBE_MAP, geoNode->getDiffTex());
+				glUniform1i(glGetUniformLocation(m_shaders.at("skybox").handle, "CubeMap"), 0);
+				// draw bound vertex array using bound shader
+				glDrawArrays(skybox_object.draw_mode, 0, skybox_object.num_elements);
+			}
+			else {
+				if (geoNode->useOrbit()) {
+					//all these ifs are really ugly as stated in the comment in the GeometryNode.hpp
+					glUseProgram(m_shaders.at("vao").handle);
+					//I've adjusted the vertexshader here so it gets the same values as the simple shader does
+					//Surely I could also pass the Modelview here, but I think it is better to keep everything even since this surely is not the last shader we add
+
+					glUniformMatrix4fv(m_shaders.at("vao").u_locs.at("ModelMatrix"),
+						1, GL_FALSE, glm::value_ptr(model_matrix));
 
 
-					 glActiveTexture(GL_TEXTURE1);
-					 glBindTexture(GL_TEXTURE_2D, geoNode->getNormTex());
-					 glUniform1i(glGetUniformLocation(m_shaders.at("planet").handle, "NormMap"), 1);
+					//bind orbitVAO
+					glBindVertexArray(orbit_object.vertex_AO);
+					glDrawArrays(orbit_object.draw_mode, 0, orbitresolution);
+				}
+				else {
+					glUseProgram(m_shaders.at("planet").handle);
+					glUniformMatrix4fv(m_shaders.at("planet").u_locs.at("ModelMatrix"),
+						1, GL_FALSE, glm::value_ptr(model_matrix));
+					//handle sun seperately in shader
 
-					 glActiveTexture(GL_TEXTURE2);
-					 glBindTexture(GL_TEXTURE_2D, geoNode->getSpecTex());
-					 glUniform1i(glGetUniformLocation(m_shaders.at("planet").handle, "SpecMap"), 2);
+					if (geoNode->useSun()) {
+						glUniform1i(m_shaders.at("planet").u_locs.at("Sun"), 1);
+					}
+					else {
+						glUniform1i(m_shaders.at("planet").u_locs.at("Sun"), 0);
+					}
+					//color of the Planet
+					glUniform3f(m_shaders.at("planet").u_locs.at("PlanetColor"), geoNode->getColor().x, geoNode->getColor().y, geoNode->getColor().z);
+					// extra matrix for normal transformation to keep them orthogonal to surface
+					glm::fmat4 normal_matrix = glm::inverseTranspose(glm::inverse(SceneGraph::getInstance().getActiveCamera()->getWorldTransform()) * model_matrix);
+					glUniformMatrix4fv(m_shaders.at("planet").u_locs.at("NormalMatrix"),
+						1, GL_FALSE, glm::value_ptr(normal_matrix));
 
-					 glActiveTexture(GL_TEXTURE3);
-					 glBindTexture(GL_TEXTURE_2D, geoNode->getDispTex());
-					 glUniform1i(glGetUniformLocation(m_shaders.at("planet").handle, "DispMap"), 3);
 
-					 // bind the VAO to draw
-					 glBindVertexArray(planet_object.vertex_AO);
+					//pass the maps
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, geoNode->getDiffTex());
+					glUniform1i(glGetUniformLocation(m_shaders.at("planet").handle, "DiffMap"), 0);
 
-					 // draw bound vertex array using bound shader
-					 glDrawElements(planet_object.draw_mode, planet_object.num_elements, model::INDEX.type, NULL);
 
-				 }
+					glActiveTexture(GL_TEXTURE1);
+					glBindTexture(GL_TEXTURE_2D, geoNode->getNormTex());
+					glUniform1i(glGetUniformLocation(m_shaders.at("planet").handle, "NormMap"), 1);
 
-			 }
-		 }
+					glActiveTexture(GL_TEXTURE2);
+					glBindTexture(GL_TEXTURE_2D, geoNode->getSpecTex());
+					glUniform1i(glGetUniformLocation(m_shaders.at("planet").handle, "SpecMap"), 2);
+
+					glActiveTexture(GL_TEXTURE3);
+					glBindTexture(GL_TEXTURE_2D, geoNode->getDispTex());
+					glUniform1i(glGetUniformLocation(m_shaders.at("planet").handle, "DispMap"), 3);
+
+					// bind the VAO to draw
+					glBindVertexArray(planet_object.vertex_AO);
+
+					// draw bound vertex array using bound shader
+					glDrawElements(planet_object.draw_mode, planet_object.num_elements, model::INDEX.type, NULL);
+
+				}
+
+			}
+		}
 
 	}
 	//traverse the Graph recursively 
 	if (!currNode->getChildrenList().empty()) {
 		std::vector<Node*>::iterator it;
 		std::vector<Node*>children = currNode->getChildrenList();
-		
-			for (it = children.begin(); it != children.end(); it++) {
-				renderSceneGraph(*it);
-			}
+
+		for (it = children.begin(); it != children.end(); it++) {
+			renderSceneGraph(*it);
 		}
+	}
 }
 
 void ApplicationSolar::render() const {
-  
-  if (SceneGraph::getInstance().getRoot() != nullptr) {
-	  renderSceneGraph(SceneGraph::getInstance().getRoot());
-}
+	//conveniencehelper for debugging, Press O to switch
+	if (offScreen) {
+		//Render to framebuffer
+		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+	
+		//clear everythings before we go -> this avoids garbage which could influence the results
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	}
+	//always enable and disable to avoid issues when switching between on and offscreen rendering
+	glEnable(GL_DEPTH_TEST);
+	if (SceneGraph::getInstance().getRoot() != nullptr) {
+		renderSceneGraph(SceneGraph::getInstance().getRoot());
+	}
+	glDisable(GL_DEPTH_TEST);
+	if (offScreen) {
+		//now render to screen - nothing fancy here, same procedure as always:
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glBindVertexArray(screenquad_object.vertex_AO);
+		
+		glUseProgram(m_shaders.at("screen").handle);
+		
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, colorbuffer);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+	
+	}
 }
 
 void ApplicationSolar::uploadView() {
+	int width, height;
+	glfwGetWindowSize(glfwGetCurrentContext(), &width, &height);
+	glViewport(0, 0, width, height);
 	//this needs cleanup before it ends up with tons of shaders that need the same "treatment"
 	//bind shader to which to upload unforms
 	glUseProgram(m_shaders.at("planet").handle);
-  // vertices are transformed in camera space, so camera transform must be inverted
-  glm::fmat4 view_matrix = glm::inverse(SceneGraph::getInstance().getActiveCamera()->getWorldTransform());
-  // upload matrix to gpu
-  glUniformMatrix4fv(m_shaders.at("planet").u_locs.at("ViewMatrix"),
-                     1, GL_FALSE, glm::value_ptr(view_matrix));
-  glUniform3f(m_shaders.at("planet").u_locs.at("CamPosition"), SceneGraph::getInstance().getActiveCamera()->getCamPosition().x, SceneGraph::getInstance().getActiveCamera()->getCamPosition().y, SceneGraph::getInstance().getActiveCamera()->getCamPosition().z);
- // std::cout<< SceneGraph::getInstance().getActiveCamera()->getCamPosition().x<<","<< SceneGraph::getInstance().getActiveCamera()->getCamPosition().y<<","<< SceneGraph::getInstance().getActiveCamera()->getCamPosition().z<<std::endl;
+	// vertices are transformed in camera space, so camera transform must be inverted
+	glm::fmat4 view_matrix = glm::inverse(SceneGraph::getInstance().getActiveCamera()->getWorldTransform());
+	// upload matrix to gpu
+	glUniformMatrix4fv(m_shaders.at("planet").u_locs.at("ViewMatrix"),
+		1, GL_FALSE, glm::value_ptr(view_matrix));
+	glUniform3f(m_shaders.at("planet").u_locs.at("CamPosition"), SceneGraph::getInstance().getActiveCamera()->getCamPosition().x, SceneGraph::getInstance().getActiveCamera()->getCamPosition().y, SceneGraph::getInstance().getActiveCamera()->getCamPosition().z);
+	// std::cout<< SceneGraph::getInstance().getActiveCamera()->getCamPosition().x<<","<< SceneGraph::getInstance().getActiveCamera()->getCamPosition().y<<","<< SceneGraph::getInstance().getActiveCamera()->getCamPosition().z<<std::endl;
 
-  // bind shader to which to upload unforms
-  glUseProgram(m_shaders.at("vao").handle);
-  glUniformMatrix4fv(m_shaders.at("vao").u_locs.at("ViewMatrix"),
-	  1, GL_FALSE, glm::value_ptr(view_matrix));
+	 // bind shader to which to upload unforms
+	glUseProgram(m_shaders.at("vao").handle);
+	glUniformMatrix4fv(m_shaders.at("vao").u_locs.at("ViewMatrix"),
+		1, GL_FALSE, glm::value_ptr(view_matrix));
 
-  glUseProgram(m_shaders.at("skybox").handle);
-  glUniformMatrix4fv(m_shaders.at("skybox").u_locs.at("ViewMatrix"),
-	  1, GL_FALSE, glm::value_ptr(view_matrix));
+	glUseProgram(m_shaders.at("skybox").handle);
+	glUniformMatrix4fv(m_shaders.at("skybox").u_locs.at("ViewMatrix"),
+		1, GL_FALSE, glm::value_ptr(view_matrix));
 
 }
 
@@ -222,28 +249,35 @@ void ApplicationSolar::uploadProjection() {
 	//this needs cleanup before it ends up with tons of shaders that need the same "treatment"
 	// bind shader to which to upload unforms
 	glUseProgram(m_shaders.at("planet").handle);
-  // upload matrix to gpu
-  glUniformMatrix4fv(m_shaders.at("planet").u_locs.at("ProjectionMatrix"),
-                     1, GL_FALSE, glm::value_ptr(SceneGraph::getInstance().getActiveCamera()->getProjectionMatrix()));
-  
-  // bind shader to which to upload unforms
-  glUseProgram(m_shaders.at("vao").handle);
-  glUniformMatrix4fv(m_shaders.at("vao").u_locs.at("ProjectionMatrix"),
-	  1, GL_FALSE, glm::value_ptr(SceneGraph::getInstance().getActiveCamera()->getProjectionMatrix()));
+	// upload matrix to gpu
+	glUniformMatrix4fv(m_shaders.at("planet").u_locs.at("ProjectionMatrix"),
+		1, GL_FALSE, glm::value_ptr(SceneGraph::getInstance().getActiveCamera()->getProjectionMatrix()));
 
-  // bind shader to which to upload unforms
-  glUseProgram(m_shaders.at("skybox").handle);
-  glUniformMatrix4fv(m_shaders.at("skybox").u_locs.at("ProjectionMatrix"),
-	  1, GL_FALSE, glm::value_ptr(SceneGraph::getInstance().getActiveCamera()->getProjectionMatrix()));
+	// bind shader to which to upload unforms
+	glUseProgram(m_shaders.at("vao").handle);
+	glUniformMatrix4fv(m_shaders.at("vao").u_locs.at("ProjectionMatrix"),
+		1, GL_FALSE, glm::value_ptr(SceneGraph::getInstance().getActiveCamera()->getProjectionMatrix()));
+
+	// bind shader to which to upload unforms
+	glUseProgram(m_shaders.at("skybox").handle);
+	glUniformMatrix4fv(m_shaders.at("skybox").u_locs.at("ProjectionMatrix"),
+		1, GL_FALSE, glm::value_ptr(SceneGraph::getInstance().getActiveCamera()->getProjectionMatrix()));
+	int width, height;
+	glfwGetWindowSize(glfwGetCurrentContext(), &width, &height);
+	glViewport(0, 0, width, height);
+	glBindTexture(GL_TEXTURE_2D, colorbuffer);
+	glTexImage2D(GL_TEXTURE_2D, 0, (GLint)GL_RGBA8, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+	glBindTexture(GL_TEXTURE_2D, renderbuffer);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
 
 }
 
 // update uniform locations
-void ApplicationSolar::uploadUniforms() { 
+void ApplicationSolar::uploadUniforms() {
 
-  // upload uniform values to new locations
-  uploadView();
-  uploadProjection();
+	// upload uniform values to new locations
+	uploadView();
+	uploadProjection();
 
 
 
@@ -252,40 +286,48 @@ void ApplicationSolar::uploadUniforms() {
 ///////////////////////////// intialisation functions /////////////////////////
 // load shader sources
 void ApplicationSolar::initializeShaderPrograms() {
-  // store shader program objects in container
-  m_shaders.emplace("planet", shader_program{{{GL_VERTEX_SHADER,m_resource_path + "shaders/simple.vert"},
-                                           {GL_FRAGMENT_SHADER, m_resource_path + "shaders/simple.frag"}}});
-  // request uniform locations for shader program
-  m_shaders.at("planet").u_locs["NormalMatrix"] = -1;
-  m_shaders.at("planet").u_locs["ModelMatrix"] = -1;
-  m_shaders.at("planet").u_locs["ViewMatrix"] = -1;
-  m_shaders.at("planet").u_locs["ProjectionMatrix"] = -1;
-  m_shaders.at("planet").u_locs["CamPosition"] = -1;
-  //ambient color of planets
-  m_shaders.at("planet").u_locs["PlanetColor"] = -1;
-  m_shaders.at("planet").u_locs["LightPosition"] = -1;
-  m_shaders.at("planet").u_locs["LightColor"] = -1;
-  m_shaders.at("planet").u_locs["LightIntensity"] = -1;
-  m_shaders.at("planet").u_locs["Toon"] = -1;
-  m_shaders.at("planet").u_locs["Sun"] = -1;
+	// store shader program objects in container
+	m_shaders.emplace("planet", shader_program{ {{GL_VERTEX_SHADER,m_resource_path + "shaders/simple.vert"},
+											 {GL_FRAGMENT_SHADER, m_resource_path + "shaders/simple.frag"}} });
+	// request uniform locations for shader program
+	m_shaders.at("planet").u_locs["NormalMatrix"] = -1;
+	m_shaders.at("planet").u_locs["ModelMatrix"] = -1;
+	m_shaders.at("planet").u_locs["ViewMatrix"] = -1;
+	m_shaders.at("planet").u_locs["ProjectionMatrix"] = -1;
+	m_shaders.at("planet").u_locs["CamPosition"] = -1;
+	//ambient color of planets
+	m_shaders.at("planet").u_locs["PlanetColor"] = -1;
+	m_shaders.at("planet").u_locs["LightPosition"] = -1;
+	m_shaders.at("planet").u_locs["LightColor"] = -1;
+	m_shaders.at("planet").u_locs["LightIntensity"] = -1;
+	m_shaders.at("planet").u_locs["Toon"] = -1;
+	m_shaders.at("planet").u_locs["Sun"] = -1;
 
-  //next Shader
-  m_shaders.emplace("vao", shader_program{ {{GL_VERTEX_SHADER,m_resource_path + "shaders/vao.vert"},
-										  {GL_FRAGMENT_SHADER, m_resource_path + "shaders/vao.frag"}} });
-  // request uniform locations for shader program
-  m_shaders.at("vao").u_locs["ModelMatrix"] = -1;
-  m_shaders.at("vao").u_locs["ViewMatrix"] = -1;
-  m_shaders.at("vao").u_locs["ProjectionMatrix"] = -1;
+	//next Shader
+	m_shaders.emplace("vao", shader_program{ {{GL_VERTEX_SHADER,m_resource_path + "shaders/vao.vert"},
+											{GL_FRAGMENT_SHADER, m_resource_path + "shaders/vao.frag"}} });
+	// request uniform locations for shader program
+	m_shaders.at("vao").u_locs["ModelMatrix"] = -1;
+	m_shaders.at("vao").u_locs["ViewMatrix"] = -1;
+	m_shaders.at("vao").u_locs["ProjectionMatrix"] = -1;
 
 
-  //next Shader
-  m_shaders.emplace("skybox", shader_program{ {{GL_VERTEX_SHADER,m_resource_path + "shaders/skybox.vert"},
-										  {GL_FRAGMENT_SHADER, m_resource_path + "shaders/skybox.frag"}} });
-  // request uniform locations for shader program
-  m_shaders.at("skybox").u_locs["ModelMatrix"] = -1;
-  m_shaders.at("skybox").u_locs["ViewMatrix"] = -1;
-  m_shaders.at("skybox").u_locs["ProjectionMatrix"] = -1;
- 
+	//next Shader
+	m_shaders.emplace("skybox", shader_program{ {{GL_VERTEX_SHADER,m_resource_path + "shaders/skybox.vert"},
+											{GL_FRAGMENT_SHADER, m_resource_path + "shaders/skybox.frag"}} });
+	// request uniform locations for shader program
+	m_shaders.at("skybox").u_locs["ModelMatrix"] = -1;
+	m_shaders.at("skybox").u_locs["ViewMatrix"] = -1;
+	m_shaders.at("skybox").u_locs["ProjectionMatrix"] = -1;
+
+	//next Shader
+	m_shaders.emplace("screen", shader_program{ {{GL_VERTEX_SHADER,m_resource_path + "shaders/screen.vert"},
+											{GL_FRAGMENT_SHADER, m_resource_path + "shaders/screen.frag"}} });
+	m_shaders.at("screen").u_locs["Grey"] = -1;
+	m_shaders.at("screen").u_locs["MirrorX"] = -1;
+	m_shaders.at("screen").u_locs["MirrorY"] = -1;
+	m_shaders.at("screen").u_locs["Gauss"] = -1;
+
 
 
 }
@@ -301,20 +343,20 @@ void ApplicationSolar::initializeSkyboxTextures(GeometryNode* skybox) {
 		m_resource_path + "textures/galaxy+Z.png",
 		m_resource_path + "textures/galaxy-Z.png"
 	};
-	
+
 
 	//prepare
 	glGenTextures(1, skybox->getDiffTexptr());
 	glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->getDiffTex());
-	 //glBindTexture(GL_TEXTURE_2D, skybox->getDiffTex());
-	 //pixel_data colortex = texture_loader::file(textures[0]);
-	// glTexImage2D(GL_TEXTURE_2D, 0, (GLint)colortex.channels, colortex.width, colortex.height, 0, colortex.channels, colortex.channel_type, colortex.ptr());
-	//assign the textures
+	//glBindTexture(GL_TEXTURE_2D, skybox->getDiffTex());
+	//pixel_data colortex = texture_loader::file(textures[0]);
+   // glTexImage2D(GL_TEXTURE_2D, 0, (GLint)colortex.channels, colortex.width, colortex.height, 0, colortex.channels, colortex.channel_type, colortex.ptr());
+   //assign the textures
 	for (unsigned int i = 0; i < textures.size(); i++)
 	{
 		pixel_data colortex = texture_loader::file(textures[i]);
 		glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, (GLint)colortex.channels, colortex.width, colortex.height, 0, colortex.channels, colortex.channel_type, colortex.ptr());
-	
+
 	}
 	//setup parameters
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, (GLint)GL_LINEAR);
@@ -326,7 +368,7 @@ void ApplicationSolar::initializeSkyboxTextures(GeometryNode* skybox) {
 
 //initialize SceneGraph
 void ApplicationSolar::initializeSceneGraph() {
-	
+
 	model planet_model = model_loader::obj(m_resource_path + "models/sphere.obj", model::NORMAL);
 	//initializing the SceneGraph - every Matrix is a single transformation step 
 	//all planet values are completly random
@@ -336,7 +378,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	//this is intentional because it allows to easily track an object by just putting the camera update within the render procedure
 	//as long as the camera is a child of root, it will work like in the example which was provided 
 	Node* root = SceneGraph::getInstance().getRoot();
-	
+
 	//Skybox:
 	GeometryNode* skybox = new GeometryNode("Skybox");
 	skybox->setColor(glm::fvec3{ 0.5f, 0.5f, 0.5f });
@@ -345,20 +387,20 @@ void ApplicationSolar::initializeSceneGraph() {
 	root->addChildren(skybox);
 	skybox->setParent(root);
 	initializeSkyboxTextures(skybox);
-	
+
 	//add the lightsource to our scene
-	
-	PointLightNode * light= new PointLightNode("Sunlight");
-	
+
+	PointLightNode * light = new PointLightNode("Sunlight");
+
 	light->setLightIntensity(1.0f);
 	light->setLightColor(glm::fvec3{ 1.0f, 1.0f, 1.0f });
 	light->setParent(root);
 	light->setLightPosition(glm::fvec3{ 0.0f,0.0f,0.0f });
 	root->addChildren(light);
-	light->setLocalTransform(glm::translate(glm::fmat4{},light->getLightPosition()));
+	light->setLocalTransform(glm::translate(glm::fmat4{}, light->getLightPosition()));
 
 	GeometryNode* sun = new GeometryNode("Sun");
-	sun->setColor(glm::fvec3{1.0f,1.0f,0.0f});
+	sun->setColor(glm::fvec3{ 1.0f,1.0f,0.0f });
 	sun->setLocalTransform(glm::fmat4{});
 	sun->setModel(planet_model);
 	sun->changeTimeDependency();
@@ -366,7 +408,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	//This should be optimized: once either a root is set or a child is added, the corresponding function should be set automatically
 	root->addChildren(sun);
 	sun->setParent(root);
-	initializePlanetTextures(sun, "sunmap.png", "sunnormal.png","sunspecular.png","sundisplacement.png");
+	initializePlanetTextures(sun, "sunmap.png", "sunnormal.png", "sunspecular.png", "sundisplacement.png");
 	//mercury
 	//one node handles rotationspeed around sun
 	//Since in this setup root resembles the position of the sun, this is also the parent of the planets
@@ -384,7 +426,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	Node* planettranslation = new Node("Mercury Translate");
 	//GeometryNode: This is the planet as it will be rendered - it also holds the values for rotation around itself
 	GeometryNode* planet = new GeometryNode("Mercury Rotation");
-	
+
 	planetaroundsunrotation->addChildren(planettranslation);
 	planettranslation->setParent(planetaroundsunrotation);
 	glm::fmat4 planettranslationmatrix = glm::translate(glm::fmat4{}, glm::fvec3{ 0.0f, 0.0f, -2.0f });
@@ -395,7 +437,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	planetOrbit->setParent(root);
 	root->addChildren(planetOrbit);
 	planetOrbit->setLocalTransform(glm::scale(glm::fmat4{}, glm::fvec3{ -2.0f, -2.0f, -2.0f }));
-	
+
 	planet->setModel(planet_model);
 	glm::fmat4 	planetmatrix = glm::rotate(glm::fmat4{}, 1.0f, glm::fvec3{ 0.0f, 1.0f, 0.0f });
 	planetmatrix = glm::scale(planetmatrix, glm::fvec3{ 0.3f, 0.3f, 0.3f });
@@ -489,15 +531,15 @@ void ApplicationSolar::initializeSceneGraph() {
 	//moon
 	//basically transformations work as with a planet, just that in this case the earth will be our center of rotation
 	Node* moontranslation = new Node("Moon Translate");
-	GeometryNode* moon= new GeometryNode("Moon Rotation");
+	GeometryNode* moon = new GeometryNode("Moon Rotation");
 	planet->addChildren(moontranslation);
 	moontranslation->setParent(planet);
 	moontranslation->changeTimeDependency();
 	moontranslation->setRotationY(0.2f);
 	glm::fmat4 moontranslationmatrix = glm::translate(glm::fmat4{}, glm::fvec3{ 0.0f, 0.0f, -1.5f });
 	moontranslation->setLocalTransform(moontranslationmatrix);
-	
-	
+
+
 	planetOrbit = new GeometryNode("Moon Orbit");
 	planetOrbit->setOrbit(true);
 	planetOrbit->setParent(planet);
@@ -715,7 +757,7 @@ void ApplicationSolar::initializeSceneGraph() {
 	stars->setStar(true);
 	root->addChildren(stars);
 	stars->setLocalTransform(glm::scale(glm::fmat4{}, glm::fvec3{ 20.0f, 20.0f, 20.0f }));
-	std::cout<<SceneGraph::getInstance().printGraph();
+	std::cout << SceneGraph::getInstance().printGraph();
 }
 
 
@@ -725,7 +767,7 @@ void ApplicationSolar::initializePlanetTextures(GeometryNode* planet, std::strin
 
 	//prepare
 	glActiveTexture(GL_TEXTURE0);
-	pixel_data colortex = texture_loader::file(m_resource_path + "textures/"+diff);
+	pixel_data colortex = texture_loader::file(m_resource_path + "textures/" + diff);
 	glGenTextures(1, planet->getDiffTexptr());
 	glBindTexture(GL_TEXTURE_2D, planet->getDiffTex());
 	//parameters
@@ -769,281 +811,419 @@ void ApplicationSolar::initializePlanetTextures(GeometryNode* planet, std::strin
 
 }
 
+void ApplicationSolar::initializefbo() {
+	//define the quad (positions+uv), we only need xy positions, since z is always 0 
+	float screenquad[] = {
+		
+		-1.0f,  1.0f,  0.0f, 1.0f,
+		-1.0f, -1.0f,  0.0f, 0.0f,
+		 1.0f, -1.0f,  1.0f, 0.0f,
 
+		-1.0f,  1.0f,  0.0f, 1.0f,
+		 1.0f, -1.0f,  1.0f, 0.0f,
+		 1.0f,  1.0f,  1.0f, 1.0f
+	};
+	//VAO/VBO etc. - same as always:
+	glGenVertexArrays(1, &screenquad_object.vertex_AO);
+	glBindVertexArray(screenquad_object.vertex_AO);
+	glGenBuffers(1, &screenquad_object.vertex_BO);
+	glBindBuffer(GL_ARRAY_BUFFER, screenquad_object.vertex_BO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(screenquad), &screenquad, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	//position first
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+	//uv second
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+	screenquad_object.draw_mode = GL_TRIANGLES;
+	
+	//now the FBO:
+	//generate and bind
+	glGenFramebuffers(1, &framebuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+	//colortexture
+	glGenTextures(1, &colorbuffer);
+	glBindTexture(GL_TEXTURE_2D, colorbuffer);
 
-// load models
-void ApplicationSolar::initializeGeometry() {
-  model planet_model = model_loader::obj(m_resource_path + "models/sphere.obj", model::NORMAL | model::TEXCOORD);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, (GLint)GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, (GLint)GL_LINEAR);
+	//use current image values as size
+	int width, height;
+	glfwGetWindowSize(glfwGetCurrentContext(),&width, &height);
+	
+	glTexImage2D(GL_TEXTURE_2D, 0, (GLint)GL_RGBA8, width,height, 0, GL_BGRA, GL_UNSIGNED_BYTE, NULL);
+	//Texture Object attachments
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,colorbuffer, 0);
+	//Now for the depth
+	//define buffer
+	glGenRenderbuffers(1, &renderbuffer);
+	glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer); 
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,GL_RENDERBUFFER, renderbuffer);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT,width, height);
 
-  // generate vertex array object
-  glGenVertexArrays(1, &planet_object.vertex_AO);
-  // bind the array for attaching buffers
-  glBindVertexArray(planet_object.vertex_AO);
-
-  // generate generic buffer
-  glGenBuffers(1, &planet_object.vertex_BO);
-  // bind this as an vertex array buffer containing all attributes
-  glBindBuffer(GL_ARRAY_BUFFER, planet_object.vertex_BO);
-  // configure currently bound array buffer
-  glBufferData(GL_ARRAY_BUFFER, sizeof(float) * planet_model.data.size(), planet_model.data.data(), GL_STATIC_DRAW);
-
-  // activate first attribute on gpu
-  glEnableVertexAttribArray(0);
-  // first attribute is 3 floats with no offset & stride
-  glVertexAttribPointer(0, model::POSITION.components, model::POSITION.type, GL_FALSE, planet_model.vertex_bytes, planet_model.offsets[model::POSITION]);
-  // activate second attribute on gpu
-  glEnableVertexAttribArray(1);
-  // second attribute is 3 floats with no offset & stride
-  glVertexAttribPointer(1, model::NORMAL.components, model::NORMAL.type, GL_FALSE, planet_model.vertex_bytes, planet_model.offsets[model::NORMAL]);
-
-
-  // texcoords:
-  glEnableVertexAttribArray(2);
-  glVertexAttribPointer(2, model::TEXCOORD.components, model::TEXCOORD.type, GL_FALSE, planet_model.vertex_bytes, planet_model.offsets[model::TEXCOORD]);
-  
-  //For testing pass tangent and bitangent as well
-  // tangent:
-  glEnableVertexAttribArray(3);
-  glVertexAttribPointer(3, model::TANGENT.components, model::TANGENT.type, GL_FALSE, planet_model.vertex_bytes, planet_model.offsets[model::TANGENT]);
-
-  //bitangent:
-  glEnableVertexAttribArray(4);
-  glVertexAttribPointer(4, model::BITANGENT.components, model::BITANGENT.type, GL_FALSE, planet_model.vertex_bytes, planet_model.offsets[model::BITANGENT]);
-
-
-   // generate generic buffer
-  glGenBuffers(1, &planet_object.element_BO);
-  // bind this as an vertex array buffer containing all attributes
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, planet_object.element_BO);
-  // configure currently bound array buffer
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, model::INDEX.size * planet_model.indices.size(), planet_model.indices.data(), GL_STATIC_DRAW);
-
-  // store type of primitive to draw
-  planet_object.draw_mode = GL_TRIANGLES;
-  // transfer number of indices to model object 
-  planet_object.num_elements = GLsizei(planet_model.indices.size());
-
-  //star Object:
-	//initialize some stars:
-  std::vector<float>  star_model;
-  unsigned starCounter = 1000;//number of stars to draw
-  for (unsigned i = 0; i < starCounter; i++)
-  {
-	 
-	  //Just some random points, adjusted to be between -1 and 1 - scaling will happen through the Scene Graph initialization
-	  star_model.push_back((float(rand()) / RAND_MAX)*2.0f - 1.0f);
-	  star_model.push_back((float(rand()) / RAND_MAX)*2.0f - 1.0f);
-	  star_model.push_back((float(rand()) / RAND_MAX)*2.0f - 1.0f);
-	  //the colors of the stars represented by  values between 0 and 1
-	  star_model.push_back((float(rand()) / RAND_MAX));
-	  star_model.push_back((float(rand()) / RAND_MAX));
-	  star_model.push_back((float(rand()) / RAND_MAX));
-
-
-  }
-  //now define a VAO
-  glGenVertexArrays(1, &star_object.vertex_AO);
-  glBindVertexArray(star_object.vertex_AO);
-  //VBO
-  glGenBuffers(1, &star_object.vertex_BO);
-  glBindBuffer(GL_ARRAY_BUFFER, star_object.vertex_BO);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(float)*star_model.size(), &(star_model[0]), GL_STATIC_DRAW);
-  //now give some information of the layout
-  glEnableVertexAttribArray(0);
-  //location 0 in Shader:
-  //position, 3 values(xyz), all floats, no normalization, 6 attributesoverall, offset is 0
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (GLvoid*)(0));
-  //now color, offset 3
-  glEnableVertexAttribArray(1);
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (GLvoid*)(sizeof(float) * 3));
-  //Bind
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-  glBindVertexArray(0);
-  //set values needed for rendering
-  star_object.draw_mode = GL_POINTS;
-  star_object.num_elements = starCounter;
-
-
-  //next orbit, basicliy we definy values of a circle:
-  std::vector<float>  orbit_model;
-  float angle = 0.0; 
-  //resolution defines in how many segments the circle will be divided
-
-  while (angle < 2.0f * 3.14f) {
-	  //use sin and cos to define xyz values
-	  orbit_model.push_back(std::cos(angle));
-	  orbit_model.push_back(0.0f);
-	  orbit_model.push_back(std::sin(angle));
-	  //this will be the color of our orbits - just use some grey
-	  orbit_model.push_back(0.7f);
-	  orbit_model.push_back(0.7f);
-	  orbit_model.push_back(0.7f);
-
-	  angle += 2.0f*3.14f / orbitresolution;
-  }
-
-  //VAO
-  glGenVertexArrays(1, &orbit_object.vertex_AO);
-  glBindVertexArray(orbit_object.vertex_AO);
-  //VBO
-  glGenBuffers(1, &orbit_object.vertex_BO);
-  glBindBuffer(GL_ARRAY_BUFFER, orbit_object.vertex_BO);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(float)*orbit_model.size(), &(orbit_model[0]), GL_STATIC_DRAW);
-  //now layout - basically same as with the stars:
-  glEnableVertexAttribArray(0);
-  //location 0 for our shader - position :
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (GLvoid*)(0));
-  //location 1 in Shader - color
-  glEnableVertexAttribArray(1);
-
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (GLvoid*)(sizeof(float) * 3));
-  //Bind
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-  glBindVertexArray(0);
-  //set values needed for rendering
-  orbit_object.draw_mode = GL_LINE_LOOP;
-  orbit_object.num_elements = orbit_model.size()/6;
-
-
-  //add a skybox
-  std::vector<float>  skybox_model;
-   //define the vertices of a cube:
-  float skyVerts[] = {
-	  // a cube consist of 6 sides, each side needs 2 triangles         
-	  -1.0f,  1.0f, -1.0f,
-	  -1.0f, -1.0f, -1.0f,
-	   1.0f, -1.0f, -1.0f, 
-
-	   1.0f, -1.0f, -1.0f,
-	   1.0f,  1.0f, -1.0f,
-	  -1.0f,  1.0f, -1.0f,
-
-	  -1.0f, -1.0f,  1.0f,
-	  -1.0f, -1.0f, -1.0f,
-	  -1.0f,  1.0f, -1.0f,
-	  
-	  -1.0f,  1.0f, -1.0f,
-	  -1.0f,  1.0f,  1.0f,
-	  -1.0f, -1.0f,  1.0f,
-
-	   1.0f, -1.0f, -1.0f,
-	   1.0f, -1.0f,  1.0f,
-	   1.0f,  1.0f,  1.0f,
-	  
-	   1.0f,  1.0f,  1.0f,
-	   1.0f,  1.0f, -1.0f,
-	   1.0f, -1.0f, -1.0f,
-
-	  -1.0f, -1.0f,  1.0f,
-	  -1.0f,  1.0f,  1.0f,
-	   1.0f,  1.0f,  1.0f,
-	  
-	   1.0f,  1.0f,  1.0f,
-	   1.0f, -1.0f,  1.0f,
-	  -1.0f, -1.0f,  1.0f,
-
-	  -1.0f,  1.0f, -1.0f,
-	   1.0f,  1.0f, -1.0f,
-	   1.0f,  1.0f,  1.0f,
-	   
-	   1.0f,  1.0f,  1.0f,
-	  -1.0f,  1.0f,  1.0f,
-	  -1.0f,  1.0f, -1.0f,
-
-	  -1.0f, -1.0f, -1.0f,
-	  -1.0f, -1.0f,  1.0f,
-	   1.0f, -1.0f, -1.0f,
-	   
-	   1.0f, -1.0f, -1.0f,
-	  -1.0f, -1.0f,  1.0f,
-	   1.0f, -1.0f,  1.0f
-  };
-  skybox_model.insert(skybox_model.end(), std::begin(skyVerts), std::end(skyVerts));
-  //VAO
-  glGenVertexArrays(1, &skybox_object.vertex_AO);
-  glBindVertexArray(skybox_object.vertex_AO);
-  //VBO
-  glGenBuffers(1, &skybox_object.vertex_BO);
-  glBindBuffer(GL_ARRAY_BUFFER, skybox_object.vertex_BO);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(float)*skybox_model.size(), &(skybox_model[0]), GL_STATIC_DRAW);
-  //now layout - only the position is passed:
-  glEnableVertexAttribArray(0);
-  //location 0 for our shader - position:
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, (GLvoid*)(0));
-  //Bind
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
-  glBindVertexArray(0);
-  //set values needed for rendering
-  skybox_object.draw_mode = GL_TRIANGLES;
-  skybox_object.num_elements = skybox_model.size() / 3;
+	GLenum draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
+	glDrawBuffers(1, draw_buffers);
+	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if (status != GL_FRAMEBUFFER_COMPLETE) {
+		std::cout << "Error";
+	}
+	else {
+		std::cout << "framebuffer ok!";
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
 }
+
+// load models
+void ApplicationSolar::initializeGeometry() {
+	model planet_model = model_loader::obj(m_resource_path + "models/sphere.obj", model::NORMAL | model::TEXCOORD);
+
+	// generate vertex array object
+	glGenVertexArrays(1, &planet_object.vertex_AO);
+	// bind the array for attaching buffers
+	glBindVertexArray(planet_object.vertex_AO);
+
+	// generate generic buffer
+	glGenBuffers(1, &planet_object.vertex_BO);
+	// bind this as an vertex array buffer containing all attributes
+	glBindBuffer(GL_ARRAY_BUFFER, planet_object.vertex_BO);
+	// configure currently bound array buffer
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * planet_model.data.size(), planet_model.data.data(), GL_STATIC_DRAW);
+
+	// activate first attribute on gpu
+	glEnableVertexAttribArray(0);
+	// first attribute is 3 floats with no offset & stride
+	glVertexAttribPointer(0, model::POSITION.components, model::POSITION.type, GL_FALSE, planet_model.vertex_bytes, planet_model.offsets[model::POSITION]);
+	// activate second attribute on gpu
+	glEnableVertexAttribArray(1);
+	// second attribute is 3 floats with no offset & stride
+	glVertexAttribPointer(1, model::NORMAL.components, model::NORMAL.type, GL_FALSE, planet_model.vertex_bytes, planet_model.offsets[model::NORMAL]);
+
+
+	// texcoords:
+	glEnableVertexAttribArray(2);
+	glVertexAttribPointer(2, model::TEXCOORD.components, model::TEXCOORD.type, GL_FALSE, planet_model.vertex_bytes, planet_model.offsets[model::TEXCOORD]);
+
+	//For testing pass tangent and bitangent as well
+	// tangent:
+	glEnableVertexAttribArray(3);
+	glVertexAttribPointer(3, model::TANGENT.components, model::TANGENT.type, GL_FALSE, planet_model.vertex_bytes, planet_model.offsets[model::TANGENT]);
+
+	//bitangent:
+	glEnableVertexAttribArray(4);
+	glVertexAttribPointer(4, model::BITANGENT.components, model::BITANGENT.type, GL_FALSE, planet_model.vertex_bytes, planet_model.offsets[model::BITANGENT]);
+
+
+	// generate generic buffer
+	glGenBuffers(1, &planet_object.element_BO);
+	// bind this as an vertex array buffer containing all attributes
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, planet_object.element_BO);
+	// configure currently bound array buffer
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, model::INDEX.size * planet_model.indices.size(), planet_model.indices.data(), GL_STATIC_DRAW);
+
+	// store type of primitive to draw
+	planet_object.draw_mode = GL_TRIANGLES;
+	// transfer number of indices to model object 
+	planet_object.num_elements = GLsizei(planet_model.indices.size());
+
+	//star Object:
+	  //initialize some stars:
+	std::vector<float>  star_model;
+	unsigned starCounter = 1000;//number of stars to draw
+	for (unsigned i = 0; i < starCounter; i++)
+	{
+
+		//Just some random points, adjusted to be between -1 and 1 - scaling will happen through the Scene Graph initialization
+		star_model.push_back((float(rand()) / RAND_MAX)*2.0f - 1.0f);
+		star_model.push_back((float(rand()) / RAND_MAX)*2.0f - 1.0f);
+		star_model.push_back((float(rand()) / RAND_MAX)*2.0f - 1.0f);
+		//the colors of the stars represented by  values between 0 and 1
+		star_model.push_back((float(rand()) / RAND_MAX));
+		star_model.push_back((float(rand()) / RAND_MAX));
+		star_model.push_back((float(rand()) / RAND_MAX));
+
+
+	}
+	//now define a VAO
+	glGenVertexArrays(1, &star_object.vertex_AO);
+	glBindVertexArray(star_object.vertex_AO);
+	//VBO
+	glGenBuffers(1, &star_object.vertex_BO);
+	glBindBuffer(GL_ARRAY_BUFFER, star_object.vertex_BO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float)*star_model.size(), &(star_model[0]), GL_STATIC_DRAW);
+	//now give some information of the layout
+	glEnableVertexAttribArray(0);
+	//location 0 in Shader:
+	//position, 3 values(xyz), all floats, no normalization, 6 attributesoverall, offset is 0
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (GLvoid*)(0));
+	//now color, offset 3
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (GLvoid*)(sizeof(float) * 3));
+	//Bind
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+	//set values needed for rendering
+	star_object.draw_mode = GL_POINTS;
+	star_object.num_elements = starCounter;
+
+
+	//next orbit, basicliy we definy values of a circle:
+	std::vector<float>  orbit_model;
+	float angle = 0.0;
+	//resolution defines in how many segments the circle will be divided
+
+	while (angle < 2.0f * 3.14f) {
+		//use sin and cos to define xyz values
+		orbit_model.push_back(std::cos(angle));
+		orbit_model.push_back(0.0f);
+		orbit_model.push_back(std::sin(angle));
+		//this will be the color of our orbits - just use some grey
+		orbit_model.push_back(0.7f);
+		orbit_model.push_back(0.7f);
+		orbit_model.push_back(0.7f);
+
+		angle += 2.0f*3.14f / orbitresolution;
+	}
+
+	//VAO
+	glGenVertexArrays(1, &orbit_object.vertex_AO);
+	glBindVertexArray(orbit_object.vertex_AO);
+	//VBO
+	glGenBuffers(1, &orbit_object.vertex_BO);
+	glBindBuffer(GL_ARRAY_BUFFER, orbit_object.vertex_BO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float)*orbit_model.size(), &(orbit_model[0]), GL_STATIC_DRAW);
+	//now layout - basically same as with the stars:
+	glEnableVertexAttribArray(0);
+	//location 0 for our shader - position :
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (GLvoid*)(0));
+	//location 1 in Shader - color
+	glEnableVertexAttribArray(1);
+
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 6, (GLvoid*)(sizeof(float) * 3));
+	//Bind
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+	//set values needed for rendering
+	orbit_object.draw_mode = GL_LINE_LOOP;
+	orbit_object.num_elements = orbit_model.size() / 6;
+
+
+	//add a skybox
+	std::vector<float>  skybox_model;
+	//define the vertices of a cube:
+	float skyVerts[] = {
+		// a cube consist of 6 sides, each side needs 2 triangles         
+		-1.0f,  1.0f, -1.0f,
+		-1.0f, -1.0f, -1.0f,
+		 1.0f, -1.0f, -1.0f,
+
+		 1.0f, -1.0f, -1.0f,
+		 1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
+
+		-1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f, -1.0f,
+		-1.0f,  1.0f, -1.0f,
+
+		-1.0f,  1.0f, -1.0f,
+		-1.0f,  1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
+
+		 1.0f, -1.0f, -1.0f,
+		 1.0f, -1.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,
+
+		 1.0f,  1.0f,  1.0f,
+		 1.0f,  1.0f, -1.0f,
+		 1.0f, -1.0f, -1.0f,
+
+		-1.0f, -1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,
+		 1.0f,  1.0f,  1.0f,
+
+		 1.0f,  1.0f,  1.0f,
+		 1.0f, -1.0f,  1.0f,
+		-1.0f, -1.0f,  1.0f,
+
+		-1.0f,  1.0f, -1.0f,
+		 1.0f,  1.0f, -1.0f,
+		 1.0f,  1.0f,  1.0f,
+
+		 1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f,  1.0f,
+		-1.0f,  1.0f, -1.0f,
+
+		-1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f,  1.0f,
+		 1.0f, -1.0f, -1.0f,
+
+		 1.0f, -1.0f, -1.0f,
+		-1.0f, -1.0f,  1.0f,
+		 1.0f, -1.0f,  1.0f
+	};
+	skybox_model.insert(skybox_model.end(), std::begin(skyVerts), std::end(skyVerts));
+	//VAO
+	glGenVertexArrays(1, &skybox_object.vertex_AO);
+	glBindVertexArray(skybox_object.vertex_AO);
+	//VBO
+	glGenBuffers(1, &skybox_object.vertex_BO);
+	glBindBuffer(GL_ARRAY_BUFFER, skybox_object.vertex_BO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float)*skybox_model.size(), &(skybox_model[0]), GL_STATIC_DRAW);
+	//now layout - only the position is passed:
+	glEnableVertexAttribArray(0);
+	//location 0 for our shader - position:
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(float) * 3, (GLvoid*)(0));
+	//Bind
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+	//set values needed for rendering
+	skybox_object.draw_mode = GL_TRIANGLES;
+	skybox_object.num_elements = skybox_model.size() / 3;
+
+}
+
 
 ///////////////////////////// callback functions for window events ////////////
 // handle key input
 void ApplicationSolar::keyCallback(int key, int action, int mods) {
-  if (key == GLFW_KEY_W  && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
-	  glm::fvec3 offset= glm::fvec3{ 0.0f, 0.0f, -0.1f };
-	//  SceneGraph::getInstance().getActiveCamera()->setCamPosition(SceneGraph::getInstance().getActiveCamera()->getCamPosition() + offset);
-	  SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::translate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(), offset));
-	
-	  uploadView();
-  }
-  else if (key == GLFW_KEY_S  && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
-	  
-	  glm::fvec3 offset = glm::fvec3{ 0.0f, 0.0f, 0.1f };
-	//  SceneGraph::getInstance().getActiveCamera()->setCamPosition(SceneGraph::getInstance().getActiveCamera()->getCamPosition() + offset);
-	  SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::translate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(), offset));
+	if (key == GLFW_KEY_W && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+		glm::fvec3 offset = glm::fvec3{ 0.0f, 0.0f, -0.1f };
+		//  SceneGraph::getInstance().getActiveCamera()->setCamPosition(SceneGraph::getInstance().getActiveCamera()->getCamPosition() + offset);
+		SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::translate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(), offset));
 
-	  uploadView();
-  }
-  //add a few more controls to allow for rotations:
-  else if (key == GLFW_KEY_X && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
-	  SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::rotate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(),0.01f, glm::fvec3{ 1.0f, 0.0f, 0.0f }));
-	  uploadView();
-  }
-  else if (key == GLFW_KEY_Y && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
-	  SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::rotate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(), 0.01f, glm::fvec3{ 0.0f, 1.0f, 0.0f }));
-	  uploadView();
-  }
-  else if (key == GLFW_KEY_Z && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
-	  SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::rotate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(), 0.01f, glm::fvec3{ 0.0f, 0.0f, -1.0f }));
-	  
-	  uploadView();
-  }
-  //Handle Toon Shading
-  else if (key == GLFW_KEY_0) {
-	  glUseProgram(m_shaders.at("planet").handle);
-	  glUniform1i(m_shaders.at("planet").u_locs.at("Toon"), 0);
-  }
-  else if (key == GLFW_KEY_1) {
-	  glUseProgram(m_shaders.at("planet").handle);
-	  glUniform1i(m_shaders.at("planet").u_locs.at("Toon"), 1);
-  }
+		uploadView();
+	}
+	else if (key == GLFW_KEY_S && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+
+		glm::fvec3 offset = glm::fvec3{ 0.0f, 0.0f, 0.1f };
+		//  SceneGraph::getInstance().getActiveCamera()->setCamPosition(SceneGraph::getInstance().getActiveCamera()->getCamPosition() + offset);
+		SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::translate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(), offset));
+
+		uploadView();
+	}
+	//add a few more controls to allow for rotations:
+	else if (key == GLFW_KEY_X && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+		SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::rotate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(), 0.01f, glm::fvec3{ 1.0f, 0.0f, 0.0f }));
+		uploadView();
+	}
+	else if (key == GLFW_KEY_Y && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+		SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::rotate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(), 0.01f, glm::fvec3{ 0.0f, 1.0f, 0.0f }));
+		uploadView();
+	}
+	else if (key == GLFW_KEY_Z && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+		SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::rotate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(), 0.01f, glm::fvec3{ 0.0f, 0.0f, -1.0f }));
+
+		uploadView();
+	}
+	//Handle Toon Shading
+	else if (key == GLFW_KEY_2) {
+		glUseProgram(m_shaders.at("planet").handle);
+		glUniform1i(m_shaders.at("planet").u_locs.at("Toon"), 0);
+	}
+	else if (key == GLFW_KEY_1) {
+		glUseProgram(m_shaders.at("planet").handle);
+		glUniform1i(m_shaders.at("planet").u_locs.at("Toon"), 1);
+	}
+	//Additional Keys for Offscreen
+	else if (key == GLFW_KEY_7 && action == GLFW_PRESS) {
+		
+		glUseProgram(m_shaders.at("screen").handle);
+		if (grey) {
+			grey = false;
+			glUniform1i(m_shaders.at("screen").u_locs.at("Grey"), 0);
+		}
+		else {
+			grey = true;
+			glUniform1i(m_shaders.at("screen").u_locs.at("Grey"), 1);
+		}
+	
+	}
+
+	else if (key == GLFW_KEY_8 && action == GLFW_PRESS) {
+
+		glUseProgram(m_shaders.at("screen").handle);
+		if (mirrorx) {
+			mirrorx = false;
+			glUniform1i(m_shaders.at("screen").u_locs.at("MirrorX"), 0);
+		}
+		else {
+			mirrorx = true;
+			glUniform1i(m_shaders.at("screen").u_locs.at("MirrorX"), 1);
+		}
+
+	}
+	else if (key == GLFW_KEY_9 && action == GLFW_PRESS) {
+
+		glUseProgram(m_shaders.at("screen").handle);
+		if (mirrory) {
+			mirrory= false;
+			glUniform1i(m_shaders.at("screen").u_locs.at("MirrorY"), 0);
+		}
+		else {
+			mirrory = true;
+			glUniform1i(m_shaders.at("screen").u_locs.at("MirrorY"), 1);
+		}
+
+	}
+	else if (key == GLFW_KEY_0 && action == GLFW_PRESS) {
+
+		glUseProgram(m_shaders.at("screen").handle);
+		if (gauss) {
+			gauss = false;
+			glUniform1i(m_shaders.at("screen").u_locs.at("Gauss"), 0);
+		}
+		else {
+			gauss = true;
+			glUniform1i(m_shaders.at("screen").u_locs.at("Gauss"), 1);
+		}
+
+	}
+	else if (key == GLFW_KEY_F && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+		GLFWmonitor *mon= glfwGetPrimaryMonitor();
+		if (fullScreen) {
+			fullScreen = false;
+			ApplicationSolar::resizeCallback(1024, 768);
+
+		}
+		else {
+			fullScreen = true;
+			ApplicationSolar::resizeCallback(3000, 1800);
+		}
+		
+		uploadView();
+	}
+	else if (key == GLFW_KEY_O && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+		if (offScreen) {
+			offScreen = false;
+		}
+		else {
+			offScreen = true;
+		}
+	
+	}
 }
 
 //handle delta mouse movement input
 void ApplicationSolar::mouseCallback(double pos_x, double pos_y) {
-  // mouse handling
+	// mouse handling
 	glm::fvec3 offset = glm::fvec3{ 0.001f*pos_x, 0.001f*pos_y, 0.0f };
 	SceneGraph::getInstance().getActiveCamera()->setCamPosition(SceneGraph::getInstance().getActiveCamera()->getCamPosition() + offset);
-	SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::translate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(),offset));
+	SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::translate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(), offset));
 	uploadView();
 }
 
 //handle resizing
 void ApplicationSolar::resizeCallback(unsigned width, unsigned height) {
-  // recalculate projection matrix for new aspect ration
-  SceneGraph::getInstance().getActiveCamera()->setProjectionMatrix(utils::calculate_projection_matrix(float(width) / float(height)));
-  // upload new projection matrix
-  uploadProjection();
+	// recalculate projection matrix for new aspect ration
+	glfwSetWindowSize(glfwGetCurrentContext(),width, height);
+	SceneGraph::getInstance().getActiveCamera()->setProjectionMatrix(utils::calculate_projection_matrix(float(width) / float(height)));
+	// upload new projection matrix
+	uploadProjection();
 }
 
 
 // exe entry point
 int main(int argc, char* argv[]) {
-  Application::run<ApplicationSolar>(argc, argv, 3, 2);
+	Application::run<ApplicationSolar>(argc, argv, 3, 2);
 }
-
-

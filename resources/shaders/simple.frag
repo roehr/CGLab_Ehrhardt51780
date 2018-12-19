@@ -16,6 +16,7 @@ uniform int Toon;
 uniform int Sun;
 out vec4 out_Color;
 
+
 uniform sampler2D DiffMap;
 uniform sampler2D NormMap;
 uniform sampler2D SpecMap;
@@ -126,5 +127,6 @@ void main() {
 		}
 	}
 	out_Color = result;
+	
  
 }

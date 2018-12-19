@@ -30,6 +30,7 @@ class ApplicationSolar : public Application {
   void initializeShaderPrograms();
   void initializeGeometry();
   void initializeSceneGraph();
+  void initializefbo();
   void initializePlanetTextures(GeometryNode*, std::string, std::string, std::string, std::string);
   void initializeSkyboxTextures(GeometryNode*);
   // update uniform values
@@ -44,6 +45,16 @@ class ApplicationSolar : public Application {
   model_object star_object;
   model_object orbit_object;
   model_object skybox_object;
+  model_object screenquad_object;
+  bool mirrorx = false;
+  bool mirrory = false;
+  bool gauss = false;
+  bool grey = false;
+  bool offScreen = true;
+  bool fullScreen = false;
+  unsigned int framebuffer;
+  unsigned int colorbuffer;
+  unsigned int renderbuffer;
   bool isStar;
   bool isOrbit;
   // camera transform matrix
