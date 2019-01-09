@@ -1,11 +1,22 @@
-#version 150
+#version 430 core
 //#extension GL_OES_standard_derivatives : enable
+
 in vec3 pass_Normal;
 in vec3 pass_Pos;
 in vec3 pass_Vert;
 in vec2 pass_UV;
 in mat3 pass_TBN;
 in vec3 eyepos;
+
+struct Light{
+	vec3 lColor;
+	vec3 lPos;
+	float lInt;
+};
+layout (std430) buffer LightBlock 
+{
+Light lights[];
+} lightsources;
 
 uniform vec3 PlanetColor;
 uniform vec3 LightColor;
@@ -14,6 +25,7 @@ uniform vec3 LightPosition;
 uniform float LightIntensity;
 uniform int Toon;
 uniform int Sun;
+uniform int MultiLight;
 out vec4 out_Color;
 
 
@@ -107,10 +119,29 @@ void main() {
 
 	//get the diffuse color from the map
 	vec4 diffCol=texture(DiffMap, tUV);
-	vec4 result=(vec4(acolor,1.0)+vec4(dcolor,1.0)+vec4(scolor,1.0))*diffCol;
-	//outline for Toon
+	vec4 result=(vec4(acolor,1.0)+vec4(dcolor,1.0)+vec4(scolor,1.0));
+	
+
+
+
+	result=result*diffCol;
+	if(MultiLight==1){
+		uint len=lightsources.lights.length();
+		for(uint i=0; i<len; ++i){
+		 l = normalize(lightsources.lights[i].lPos- tFragPos); 
+		 h = normalize(l+v); 
+		 diff = max(dot(n, l), 0.0);
+		 s = pow(max(dot(n, h), 0.0), 25);	
+		 dcolor = diff * lightsources.lights[i].lColor;
+		 scolor = lightsources.lights[i].lInt * s * lightsources.lights[i].lColor;
+		 result=result+(vec4(dcolor,1.0)+vec4(scolor,1.0));
+		
+		
+		}
+	
+	}
 	if(Sun==1){
-	result=diffCol;
+	 result=diffCol;
 	}
 
 	if(Toon==1){

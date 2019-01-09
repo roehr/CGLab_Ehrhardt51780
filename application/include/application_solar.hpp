@@ -31,9 +31,10 @@ class ApplicationSolar : public Application {
   void initializeGeometry();
   void initializeSceneGraph();
   void initializefbo();
+  void initializesbo();
   void initializePlanetTextures(GeometryNode*, std::string, std::string, std::string, std::string);
   void initializeSkyboxTextures(GeometryNode*);
-  
+  void initializeRandomLights();
   // update uniform values
   void uploadUniforms();
   // upload projection matrix
@@ -48,11 +49,13 @@ class ApplicationSolar : public Application {
   model_object skybox_object;
   model_object screenquad_object;
   unsigned int ubo_handle;
+  unsigned int sbo_handle;
   GLuint locpl;
   bool mirrorx = false;
   bool mirrory = false;
   bool gauss = false;
   bool grey = false;
+  bool multilight = false;
   bool offScreen = true;
   bool fullScreen = false;
   unsigned int framebuffer;

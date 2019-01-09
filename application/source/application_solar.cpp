@@ -235,6 +235,8 @@ void ApplicationSolar::uploadView() {
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
+
+
 void ApplicationSolar::uploadProjection() {
 	//use uniformblock for update
 	glBindBuffer(GL_UNIFORM_BUFFER, ubo_handle);
@@ -264,6 +266,45 @@ void ApplicationSolar::uploadUniforms() {
 }
 
 ///////////////////////////// intialisation functions /////////////////////////
+//Random Lights
+void ApplicationSolar::initializeRandomLights() {
+	struct Light {
+		glm::fvec3 lColor;
+		glm::fvec3 lPos;
+		float lInt;
+	};
+
+	int randomsize= rand() % 10 + 1;
+	if (randomsize < 5){
+		randomsize = 5;
+	}
+	
+	Light* lights = new Light[randomsize];
+	for (int i = 0; i < randomsize; i++) {
+		lights[i].lColor = glm::fvec3((float(rand()) / RAND_MAX), (float(rand()) / RAND_MAX), (float(rand()) / RAND_MAX));
+		//Positions: -1/1 multiplied by 50
+		lights[i].lPos = glm::fvec3(10.0f * (float(rand()) / RAND_MAX)*2.0f - 1.0f, 10.0f * (float(rand()) / RAND_MAX)*2.0f - 1.0f, 10.0f * (float(rand()) / RAND_MAX)*2.0f - 1.0f);
+
+		lights[i].lInt = float(rand()) / RAND_MAX;
+	
+	}
+	std::cout << randomsize;
+
+	//sbo
+
+	glGenBuffers(1, &sbo_handle);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, sbo_handle);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(lights), &lights[0], GL_DYNAMIC_COPY);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+	//glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 0, sbo_handle, 0, sizeof(lights));
+	//glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(lights), &lights[0], GL_DYNAMIC_COPY);
+
+	GLuint loc = glGetProgramResourceIndex(m_shaders.at("planet").handle, GL_SHADER_STORAGE_BLOCK, "LightBlock");
+	glShaderStorageBlockBinding(m_shaders.at("planet").handle, loc, 0);
+
+
+
+}
 // load shader sources
 void ApplicationSolar::initializeShaderPrograms() {
 	// store shader program objects in container
@@ -279,7 +320,7 @@ void ApplicationSolar::initializeShaderPrograms() {
 	m_shaders.at("planet").u_locs["LightIntensity"] = -1;
 	m_shaders.at("planet").u_locs["Toon"] = -1;
 	m_shaders.at("planet").u_locs["Sun"] = -1;
-
+	m_shaders.at("planet").u_locs["MultiLight"] = -1;
 	//next Shader
 	m_shaders.emplace("vao", shader_program{ {{GL_VERTEX_SHADER,m_resource_path + "shaders/vao.vert"},
 											{GL_FRAGMENT_SHADER, m_resource_path + "shaders/vao.frag"}} });
@@ -334,6 +375,11 @@ void ApplicationSolar::initializeubo() {
 	glBindBufferRange(GL_UNIFORM_BUFFER, 0, ubo_handle, 0, 2 * sizeof(glm::mat4));
 
 }
+
+
+
+
+
 void ApplicationSolar::initializeSkyboxTextures(GeometryNode* skybox) {
 	//define the textures
 	std::vector<std::string> textures
@@ -1118,6 +1164,21 @@ void ApplicationSolar::keyCallback(int key, int action, int mods) {
 		SceneGraph::getInstance().getActiveCamera()->setLocalTransform(glm::rotate(SceneGraph::getInstance().getActiveCamera()->getLocalTransform(), 0.01f, glm::fvec3{ 0.0f, 0.0f, -1.0f }));
 
 		uploadView();
+	}
+	//Handle Toon Shading
+	else if (key == GLFW_KEY_3 && action == GLFW_PRESS) {
+
+		glUseProgram(m_shaders.at("planet").handle);
+		if (multilight) {
+			multilight = false;
+			glUniform1i(m_shaders.at("planet").u_locs.at("MultiLight"), 0);
+		}
+		else {
+			multilight = true;
+			initializeRandomLights();
+			glUniform1i(m_shaders.at("planet").u_locs.at("MultiLight"), 1);
+		}
+
 	}
 	//Handle Toon Shading
 	else if (key == GLFW_KEY_2) {
