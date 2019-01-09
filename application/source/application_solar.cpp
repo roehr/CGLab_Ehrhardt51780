@@ -21,6 +21,7 @@ using namespace gl;
 #include <glm/ext.hpp>
 #include <iostream>
 
+static void update_shader_programs(std::map<std::string, shader_program>& shaders, bool throwing);
 ApplicationSolar::ApplicationSolar(std::string const& resource_path)
 	:Application{ resource_path }
 	, planet_object{}
@@ -32,10 +33,8 @@ ApplicationSolar::ApplicationSolar(std::string const& resource_path)
 	, m_view_projection{ utils::calculate_projection_matrix(initial_aspect_ratio) }
 { initializeGeometry();
 initializefbo();
-
 initializeSceneGraph();
 initializeShaderPrograms();
-
 }
 
 ApplicationSolar::~ApplicationSolar() {
@@ -228,40 +227,21 @@ void ApplicationSolar::uploadView() {
 	glUseProgram(m_shaders.at("planet").handle);
 	// vertices are transformed in camera space, so camera transform must be inverted
 	glm::fmat4 view_matrix = glm::inverse(SceneGraph::getInstance().getActiveCamera()->getWorldTransform());
-	// upload matrix to gpu
-	glUniformMatrix4fv(m_shaders.at("planet").u_locs.at("ViewMatrix"),
-		1, GL_FALSE, glm::value_ptr(view_matrix));
-	glUniform3f(m_shaders.at("planet").u_locs.at("CamPosition"), SceneGraph::getInstance().getActiveCamera()->getCamPosition().x, SceneGraph::getInstance().getActiveCamera()->getCamPosition().y, SceneGraph::getInstance().getActiveCamera()->getCamPosition().z);
-	// std::cout<< SceneGraph::getInstance().getActiveCamera()->getCamPosition().x<<","<< SceneGraph::getInstance().getActiveCamera()->getCamPosition().y<<","<< SceneGraph::getInstance().getActiveCamera()->getCamPosition().z<<std::endl;
 
-	 // bind shader to which to upload unforms
-	glUseProgram(m_shaders.at("vao").handle);
-	glUniformMatrix4fv(m_shaders.at("vao").u_locs.at("ViewMatrix"),
-		1, GL_FALSE, glm::value_ptr(view_matrix));
-
-	glUseProgram(m_shaders.at("skybox").handle);
-	glUniformMatrix4fv(m_shaders.at("skybox").u_locs.at("ViewMatrix"),
-		1, GL_FALSE, glm::value_ptr(view_matrix));
-
+	 //use our uniform block for update
+	glBindBuffer(GL_UNIFORM_BUFFER, ubo_handle);
+	//target - offset -size - data - View is 2nd attribute so it needs to be offset
+	glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view_matrix));
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
 void ApplicationSolar::uploadProjection() {
-	//this needs cleanup before it ends up with tons of shaders that need the same "treatment"
-	// bind shader to which to upload unforms
-	glUseProgram(m_shaders.at("planet").handle);
-	// upload matrix to gpu
-	glUniformMatrix4fv(m_shaders.at("planet").u_locs.at("ProjectionMatrix"),
-		1, GL_FALSE, glm::value_ptr(SceneGraph::getInstance().getActiveCamera()->getProjectionMatrix()));
+	//use uniformblock for update
+	glBindBuffer(GL_UNIFORM_BUFFER, ubo_handle);
+	//target - offset -size - data
+	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(SceneGraph::getInstance().getActiveCamera()->getProjectionMatrix()));
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-	// bind shader to which to upload unforms
-	glUseProgram(m_shaders.at("vao").handle);
-	glUniformMatrix4fv(m_shaders.at("vao").u_locs.at("ProjectionMatrix"),
-		1, GL_FALSE, glm::value_ptr(SceneGraph::getInstance().getActiveCamera()->getProjectionMatrix()));
-
-	// bind shader to which to upload unforms
-	glUseProgram(m_shaders.at("skybox").handle);
-	glUniformMatrix4fv(m_shaders.at("skybox").u_locs.at("ProjectionMatrix"),
-		1, GL_FALSE, glm::value_ptr(SceneGraph::getInstance().getActiveCamera()->getProjectionMatrix()));
 	int width, height;
 	glfwGetWindowSize(glfwGetCurrentContext(), &width, &height);
 	glViewport(0, 0, width, height);
@@ -292,9 +272,6 @@ void ApplicationSolar::initializeShaderPrograms() {
 	// request uniform locations for shader program
 	m_shaders.at("planet").u_locs["NormalMatrix"] = -1;
 	m_shaders.at("planet").u_locs["ModelMatrix"] = -1;
-	m_shaders.at("planet").u_locs["ViewMatrix"] = -1;
-	m_shaders.at("planet").u_locs["ProjectionMatrix"] = -1;
-	m_shaders.at("planet").u_locs["CamPosition"] = -1;
 	//ambient color of planets
 	m_shaders.at("planet").u_locs["PlanetColor"] = -1;
 	m_shaders.at("planet").u_locs["LightPosition"] = -1;
@@ -308,8 +285,7 @@ void ApplicationSolar::initializeShaderPrograms() {
 											{GL_FRAGMENT_SHADER, m_resource_path + "shaders/vao.frag"}} });
 	// request uniform locations for shader program
 	m_shaders.at("vao").u_locs["ModelMatrix"] = -1;
-	m_shaders.at("vao").u_locs["ViewMatrix"] = -1;
-	m_shaders.at("vao").u_locs["ProjectionMatrix"] = -1;
+
 
 
 	//next Shader
@@ -317,8 +293,7 @@ void ApplicationSolar::initializeShaderPrograms() {
 											{GL_FRAGMENT_SHADER, m_resource_path + "shaders/skybox.frag"}} });
 	// request uniform locations for shader program
 	m_shaders.at("skybox").u_locs["ModelMatrix"] = -1;
-	m_shaders.at("skybox").u_locs["ViewMatrix"] = -1;
-	m_shaders.at("skybox").u_locs["ProjectionMatrix"] = -1;
+
 
 	//next Shader
 	m_shaders.emplace("screen", shader_program{ {{GL_VERTEX_SHADER,m_resource_path + "shaders/screen.vert"},
@@ -327,11 +302,38 @@ void ApplicationSolar::initializeShaderPrograms() {
 	m_shaders.at("screen").u_locs["MirrorX"] = -1;
 	m_shaders.at("screen").u_locs["MirrorY"] = -1;
 	m_shaders.at("screen").u_locs["Gauss"] = -1;
-
-
-
+	//very dirty -> duplicate Code! 
+	//I have one issue here: 
+	//before we can initialize the Uniform Block, the shaders need to be linked at least ONCE
+	//in the application.cpp this is done by calling reloadShaders and that function can be called from here
+	//BUT: it also calls the update functions - and those need to have the initialized Uniform Block to work
+	//so this is one (not so nice) way to work around it
+	update_shader_programs(m_shaders,true);
+	initializeubo();
 }
 
+void ApplicationSolar::initializeubo() {
+
+	//ubo
+	//Define a location for all shaders which will use it 
+	GLuint locpl = glGetUniformBlockIndex(m_shaders.at("planet").handle, "CameraBlock");
+	glUniformBlockBinding(m_shaders.at("planet").handle, locpl, 0);
+	GLuint locvao = glGetUniformBlockIndex(m_shaders.at("vao").handle, "CameraBlock");
+	glUniformBlockBinding(m_shaders.at("vao").handle, locvao, 0);
+	GLuint locsky = glGetUniformBlockIndex(m_shaders.at("skybox").handle, "CameraBlock");
+	glUniformBlockBinding(m_shaders.at("skybox").handle, locsky, 0);
+	//we know that by now...
+	glGenBuffers(1, &ubo_handle);
+	//I couldn't get this to work as provided on the sheets - so I chose an alternate way:
+	//nothing new here
+	glBindBuffer(GL_UNIFORM_BUFFER, ubo_handle);
+	//This will be our Buffer layout: 2 Mat4 Matrices
+	glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(glm::mat4), NULL, GL_STATIC_DRAW);
+	glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	//I define the buffer to use the whole range - we will subdivide it using SubData
+	glBindBufferRange(GL_UNIFORM_BUFFER, 0, ubo_handle, 0, 2 * sizeof(glm::mat4));
+
+}
 void ApplicationSolar::initializeSkyboxTextures(GeometryNode* skybox) {
 	//define the textures
 	std::vector<std::string> textures
@@ -862,7 +864,8 @@ void ApplicationSolar::initializefbo() {
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT,width, height);
 
 	GLenum draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
-	glDrawBuffers(1, draw_buffers);
+	glDrawBuffers(1, draw_buffers);
+
 	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	if (status != GL_FRAMEBUFFER_COMPLETE) {
 		std::cout << "Error";
@@ -1226,4 +1229,32 @@ void ApplicationSolar::resizeCallback(unsigned width, unsigned height) {
 // exe entry point
 int main(int argc, char* argv[]) {
 	Application::run<ApplicationSolar>(argc, argv, 3, 2);
+}
+
+// update uniform locations
+static void update_shader_programs(std::map<std::string, shader_program>& shaders, bool throwing) {
+	// actual functionality in lambda to allow update with and without throwing
+	auto update_lambda = [](shader_program& program) {
+		// throws exception when compiling was unsuccessfull
+		GLuint new_program = shader_loader::program(program.shader_paths);
+		// free old shader program
+		glDeleteProgram(program.handle);
+		// save new shader program
+		program.handle = new_program;
+	};
+
+	// reload all shader programs
+	for (auto& pair : shaders) {
+		if (throwing) {
+			update_lambda(pair.second);
+		}
+		else {
+			try {
+				update_lambda(pair.second);
+			}
+			catch (std::exception&) {
+				// dont crash, allow another try
+			}
+		}
+	}
 }

@@ -25,7 +25,7 @@ class ApplicationSolar : public Application {
   // draw all objects
   void render() const;
   void renderSceneGraph(Node*) const;
-
+  void initializeubo();
  protected:
   void initializeShaderPrograms();
   void initializeGeometry();
@@ -33,6 +33,7 @@ class ApplicationSolar : public Application {
   void initializefbo();
   void initializePlanetTextures(GeometryNode*, std::string, std::string, std::string, std::string);
   void initializeSkyboxTextures(GeometryNode*);
+  
   // update uniform values
   void uploadUniforms();
   // upload projection matrix
@@ -46,6 +47,8 @@ class ApplicationSolar : public Application {
   model_object orbit_object;
   model_object skybox_object;
   model_object screenquad_object;
+  unsigned int ubo_handle;
+  GLuint locpl;
   bool mirrorx = false;
   bool mirrory = false;
   bool gauss = false;
